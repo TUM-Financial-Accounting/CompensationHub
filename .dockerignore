@@ -5,3 +5,4 @@ backend/.venv
 reports
 .git
 docs/hackathon
+data/cache

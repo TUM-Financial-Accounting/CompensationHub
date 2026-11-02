@@ -1,0 +1,13 @@
+# used with `railway up --no-gitignore`: like .gitignore, but data/raw is uploaded
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+reports/
+data/cache/
+docs/hackathon/
+.agents/
+.claude/
+.git/
