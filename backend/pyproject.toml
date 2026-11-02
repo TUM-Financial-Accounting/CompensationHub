@@ -1,0 +1,22 @@
+[project]
+name = "execpay-backend"
+version = "0.1.0"
+description = "Harmonised DAX executive compensation panel (2006–2024) served over FastAPI"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pandas>=2.2",
+    "python-calamine>=0.2",
+    "scikit-learn>=1.7.2",
+    "openai>=3.35.1",
+    "python-dotenv>=1.2.3",
+    "pypdf>=6.21.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,25 @@
+# raw data stays out of git (CLAUDE.md); caches rebuild themselves
+data/raw/
+data/cache/
+
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+*.local
+.DS_Store
+
+# secrets
+.env
+
+# session and demo reports written for the chair, not part of the code
+reports/
+
+# hackathon notes, not part of the code
+docs/hackathon/
+
+# coding-agent tooling, not part of the project
+.agents/
+.claude/
+skills-lock.json
