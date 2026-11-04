@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { useApi, type PeerOverview, type PredictionOverview } from './api'
 import { MODEL_FAMILY_COLOR } from './charts'
 import { ChatProvider } from './ChatProvider'
-import { BarChart, Briefcase, Building2, Home, LineChart, Menu, MessageSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, TrendingUp, Users, X } from './icons'
+import { BarChart, Briefcase, Building2, Home, LineChart, Menu, MessageSquare, MessagesSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, TrendingUp, Users, X } from './icons'
 import { useScrollLock } from './lock'
 import { useTheme, type Theme } from './theme'
 import { ErrorBoundary, Segmented } from './ui'
@@ -14,6 +14,7 @@ import { Board } from './views/Board'
 import { Companies, Company } from './views/Companies'
 import { Design } from './views/Design'
 import { Executives, PersonView } from './views/Executives'
+import { FeedbackView } from './views/Feedback'
 import { Overview } from './views/Overview'
 import { MethodMark, PeerMethodPage, PeersView } from './views/Peers'
 import { PredictionModelPage, PredictionView } from './views/Prediction'
@@ -31,6 +32,7 @@ const NAV = [
   ['design', 'Pay design', SlidersHorizontal],
   ['board', 'Board & workforce', Briefcase],
   ['data', 'Data quality', ShieldCheck],
+  ['feedback', 'Feedback', MessagesSquare],
 ] as const
 
 /** Hash routes keep every view deep-linkable without a router dependency: #/companies/sap */
@@ -69,6 +71,8 @@ function page([section, id]: string[]) {
       return <Board />
     case 'data':
       return <QualityView />
+    case 'feedback':
+      return <FeedbackView />
     default:
       return <p>Page not found. <a href="#/">Back to the overview</a>.</p>
   }

@@ -1,5 +1,6 @@
 """HTTP API over the harmonised panel: one read route per dashboard view, plus the Add data form
-(the only routes that write, disabled when READ_ONLY is set) and the assistant.
+(the only routes that write the panel, disabled when READ_ONLY is set), feedback posts (kept in
+Postgres at DATABASE_URL) and the assistant.
 
 Pay statistics use full-year executives (≥ 360 days in office) so that joiners, leavers and
 CEO hand-overs do not drag medians down. `scope=dax` restricts to DAX firm-years, the only
@@ -16,10 +17,12 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+import psycopg
 from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from psycopg.rows import dict_row
 
 from . import assistant, entry, reference
 from . import schemas as s
@@ -665,6 +668,43 @@ def delete_row(table_id: str, index: int):
     except Exception as e:
         raise HTTPException(422, str(e)) from e
     return entry.describe(t)
+
+
+# --------------------------------------------------------------------------- feedback
+
+FEEDBACK_TABLE = """CREATE TABLE IF NOT EXISTS feedback (
+    id serial PRIMARY KEY,
+    author text NOT NULL DEFAULT '',
+    body text NOT NULL,
+    created timestamptz NOT NULL DEFAULT now())"""
+
+
+def feedback_db() -> psycopg.Connection:
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise HTTPException(503, "Feedback is off: DATABASE_URL is not set.")
+    try:
+        db = psycopg.connect(url, row_factory=dict_row, connect_timeout=5)
+    except psycopg.OperationalError as e:
+        raise HTTPException(503, f"Feedback database unreachable: {e}") from e
+    db.execute(FEEDBACK_TABLE)
+    return db
+
+
+@app.get("/api/feedback", response_model=list[s.FeedbackPost])
+def feedback():
+    """Feedback posts users left on the dashboard (bugs, wishes, questions), newest first."""
+    with feedback_db() as db:  # ponytail: newest 500 only, paginate when there are more
+        return db.execute("SELECT * FROM feedback ORDER BY id DESC LIMIT 500").fetchall()
+
+
+@app.post("/api/feedback", response_model=s.FeedbackPost)
+def post_feedback(body: s.NewFeedback):
+    """Save a feedback post. Open to every visitor, also with READ_ONLY set."""
+    # ponytail: no login or rate limit; delete spam in the database, add both if it gets abused
+    with feedback_db() as db:
+        return db.execute("INSERT INTO feedback (author, body) VALUES (%s, %s) RETURNING *",
+                          (body.author, body.body)).fetchone()
 
 
 # --------------------------------------------------------------------------- assistant

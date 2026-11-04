@@ -1,6 +1,9 @@
 """Response models. Amounts are k€, shares are fractions (0–1) unless named `_pct`."""
 
-from pydantic import BaseModel
+from datetime import datetime
+from typing import Annotated
+
+from pydantic import BaseModel, StringConstraints
 
 
 class Quantiles(BaseModel):
@@ -787,6 +790,21 @@ class Extracted(BaseModel):
     text: str                # PDF pages are marked "[page n]"
     pages: int | None
     truncated: bool
+
+
+# --------------------------------------------------------------------------- feedback
+
+
+class NewFeedback(BaseModel):
+    author: Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)] = ""
+    body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
+
+
+class FeedbackPost(BaseModel):
+    id: int
+    author: str              # '' when posted anonymously
+    body: str
+    created: datetime
 
 
 # --------------------------------------------------------------------------- assistant

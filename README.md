@@ -89,13 +89,15 @@ docs/hackathon/          historical, git-ignored: review of the six hackathon pr
 | `GET /api/tables`, `DELETE /api/tables/{id}/rows/{i}` | tables of the Add data form; delete a hand-entered row |
 | `POST /api/rows`, `POST /api/rows/check` | save rows to one or more tables in one build (all or nothing); check them first (writes are off with `READ_ONLY=1`) |
 | `POST /api/extract` | text of an uploaded PDF or text file, for the assistant |
+| `GET /api/feedback`, `POST /api/feedback` | feedback posts, newest first; post one (open to all, also with `READ_ONLY=1`; needs `DATABASE_URL`) |
 | `GET /api/chat/models`, `POST /api/chat` | assistant: models and demo questions; streamed answer |
 
 Interactive docs at `http://localhost:8000/docs`.
 
 ## Stack
 
-- **FastAPI + pandas**, no database: the panel is ~7.5k rows and fits in memory.
+- **FastAPI + pandas**, no database for the panel: it is ~7.5k rows and fits in memory. Only the
+  Feedback page's posts live in Postgres (`DATABASE_URL`; the table is created on first use).
   scikit-learn for the peer definitions and the prediction models; the `openai` SDK for the
   assistant (OpenAI, TUM's Morpheus and Ollama all speak its API); SQLite (standard library) as
   the assistant's read-only query copy; `pypdf` to read attached reports.

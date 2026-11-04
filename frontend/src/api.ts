@@ -396,6 +396,11 @@ export interface TableRows { table: string; rows: Record<string, string>[] }
 export interface RowFindings { table: string; row: number; findings: Finding[] }
 export interface Extracted { name: string; text: string; pages: number | null; truncated: boolean }
 
+// ------------------------------------------------------------------ feedback
+
+/** `author` is '' for anonymous posts; `created` is an ISO timestamp. */
+export interface FeedbackPost { id: number; author: string; body: string; created: string }
+
 // ------------------------------------------------------------------ assistant
 
 /** `thinking`: the model's thinking settings, e.g. ['off', 'on'] or ['off', 'low', 'medium', 'xhigh']; empty if none. */
