@@ -234,7 +234,7 @@ def api(path: str, params: dict | None = None) -> object:
         path = "/api" + path
     for route in app.routes:
         match, child = route.matches({"type": "http", "path": path, "method": "GET"})
-        if match != Match.FULL or path.startswith("/api/chat"):
+        if match != Match.FULL or path.startswith("/api/chat") or not hasattr(route, "endpoint"):
             continue
         sig = inspect.signature(route.endpoint)
         kwargs = dict(child.get("path_params", {}))

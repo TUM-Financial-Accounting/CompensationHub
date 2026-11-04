@@ -30,6 +30,12 @@ the backend can stay on `127.0.0.1`. The panel is confidential, so use a network
 others can reach the dashboard, start the backend with `READ_ONLY=1` (or set it in `backend/.env`)
 to switch off the write routes of **+ Add data**.
 
+**Hosted (Railway):** one service built from the `Dockerfile` (settings in `railway.json`) plus a
+Postgres with `DATABASE_URL=${{Postgres.DATABASE_URL}}`. Pushes to `main` deploy; a deploy goes
+live only once `/api/summary` answers, so a broken build leaves the previous one running.
+`data/raw/` is not in git, so the app restores it from Postgres at startup; after changing it,
+store it again with `DATABASE_URL=<DATABASE_PUBLIC_URL> uv run python -m app.rawdata`.
+
 Commands:
 
 - Data report: `cd backend && uv run python -m app.panel` lists every source found and every open issue

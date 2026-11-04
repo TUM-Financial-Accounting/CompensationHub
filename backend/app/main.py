@@ -24,7 +24,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 
-from . import assistant, entry, reference
+from . import assistant, entry, rawdata, reference
 from . import schemas as s
 from .forecast import BAND, HORIZONS, MODEL_IDS, MODELS, TARGETS, get_forecasts, what_if
 from .panel import COMPONENTS, ROOT, Panel, get_panel
@@ -37,6 +37,7 @@ Role = Literal["CEO", "CFO", "Member"]
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    rawdata.restore()  # hosted deploys built from GitHub have no data/raw
     get_panel()  # build (or load the cached) panel before the first request
     threading.Thread(target=get_forecasts, daemon=True).start()  # peers and forecasts
     yield
