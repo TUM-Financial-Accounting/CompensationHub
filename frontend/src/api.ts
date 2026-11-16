@@ -409,8 +409,8 @@ export interface Extracted { name: string; text: string; pages: number | null; t
 // ------------------------------------------------------------------ feedback
 
 /** `author` is '' for anonymous posts; `created` is an ISO timestamp; `reply_to` is the post a reply
- * answers (null for a post); `photos` are ids for `/api/feedback/photos/{id}`. */
-export interface FeedbackPost { id: number; author: string; body: string; created: string; reply_to: number | null; photos: number[] }
+ * answers (null for a post); `photos` are ids for `/api/feedback/photos/{id}`; `done` is set by any visitor. */
+export interface FeedbackPost { id: number; author: string; body: string; created: string; reply_to: number | null; photos: number[]; done: boolean }
 
 // ------------------------------------------------------------------ assistant
 

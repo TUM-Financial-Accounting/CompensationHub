@@ -465,7 +465,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .feedback-form .button { justify-self: start; }
 .feedback-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .feedback-thread { display: grid; gap: 8px; padding: 12px 0; }
-.feedback-thread > .link { justify-self: start; font-size: 0.85rem; }
+.feedback-thread .link { font-size: 0.85rem; }
+.feedback-thread.done > .feedback-post > p { color: var(--muted); }
 .feedback-thread + .feedback-thread { border-top: 1px solid var(--rule); }
 .feedback-replies { display: grid; gap: 12px; margin-left: 4px; padding-left: 14px; border-left: 2px solid var(--rule); }
 .feedback-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

@@ -19,7 +19,16 @@ export function FeedbackView() {
   const state = useApi<FeedbackPost[]>(`/feedback?visit=${visit}`)
   const [mine, setMine] = useState<FeedbackPost[]>([])
   const [replying, setReplying] = useState<number>()
+  const [marked, setMarked] = useState<Record<number, boolean>>({}) // done flags changed in this visit
+  const [error, setError] = useState<string>()
   const add = (post: FeedbackPost) => setMine((m) => [post, ...m])
+  const mark = (id: number, done: boolean) => {
+    setError(undefined)
+    send<FeedbackPost>('POST', `/feedback/${id}/done`, { done }).then(
+      (p) => setMarked((m) => ({ ...m, [p.id]: p.done })),
+      (e: Error) => setError(`Not changed: ${e.message}`),
+    )
+  }
 
   return (
     <>
@@ -31,14 +40,19 @@ export function FeedbackView() {
       </Panel>
       <Async state={state} height={240}>
         {(posts) => {
-          const all = [...mine, ...posts]
+          const all = [...mine, ...posts].map((p) => (p.id in marked ? { ...p, done: marked[p.id] } : p))
           const replies = (id: number) => all.filter((r) => r.reply_to === id).sort((a, b) => a.id - b.id)
           const threads = all.filter((p) => p.reply_to === null)
           return (
-            <Panel title="Posts" caption="Newest first; replies under their post, oldest first.">
+            <Panel title="Posts" caption="Newest first; replies under their post, oldest first. Anyone can mark a post as done.">
+              {error && (
+                <p role="alert" className="error-detail">
+                  {error}
+                </p>
+              )}
               {threads.length === 0 && <p className="caption">No posts yet.</p>}
               {threads.map((p) => (
-                <section key={p.id} className="feedback-thread">
+                <section key={p.id} className={`feedback-thread${p.done ? ' done' : ''}`}>
                   <Post post={p} />
                   {(replies(p.id).length > 0 || replying === p.id) && (
                     <div className="feedback-replies">
@@ -57,11 +71,16 @@ export function FeedbackView() {
                       )}
                     </div>
                   )}
-                  {replying !== p.id && (
-                    <button type="button" className="link" onClick={() => setReplying(p.id)}>
-                      Reply
+                  <div className="feedback-actions">
+                    {replying !== p.id && (
+                      <button type="button" className="link" onClick={() => setReplying(p.id)}>
+                        Reply
+                      </button>
+                    )}
+                    <button type="button" className="link" onClick={() => mark(p.id, !p.done)}>
+                      {p.done ? 'Mark as not done' : 'Mark as done'}
                     </button>
-                  )}
+                  </div>
                 </section>
               ))}
             </Panel>
@@ -79,6 +98,7 @@ function Post({ post }: { post: FeedbackPost }) {
       <header>
         <strong>{by}</strong>
         <time dateTime={post.created}>{when(post.created)}</time>
+        {post.done && <span className="badge">Done</span>}
       </header>
       <p>{post.body}</p>
       {post.photos.length > 0 && (

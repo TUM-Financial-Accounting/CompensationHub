@@ -703,6 +703,7 @@ FEEDBACK_TABLE = """CREATE TABLE IF NOT EXISTS feedback (
     body text NOT NULL,
     created timestamptz NOT NULL DEFAULT now());
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS reply_to int REFERENCES feedback ON DELETE CASCADE;
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS done boolean NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS feedback_photo (
     id serial PRIMARY KEY,
     post int NOT NULL REFERENCES feedback ON DELETE CASCADE,
@@ -757,6 +758,19 @@ def post_feedback(body: s.NewFeedback):
                           (body.author, body.body, body.reply_to)).fetchone()
         post["photos"] = [db.execute("INSERT INTO feedback_photo (post, type, data) VALUES (%s, %s, %s) RETURNING id",
                                      (post["id"], p.type, p.data)).fetchone()["id"] for p in body.photos]
+        return post
+
+
+@app.post("/api/feedback/{post_id}/done", response_model=s.FeedbackPost)
+def mark_feedback(post_id: int, body: s.FeedbackDone):
+    """Mark a feedback post as done, or as open again. Open to every visitor, like posting."""
+    with feedback_db() as db:
+        post = db.execute("UPDATE feedback SET done = %s WHERE id = %s AND reply_to IS NULL RETURNING *",
+                          (body.done, post_id)).fetchone()
+        if post is None:
+            raise HTTPException(404, "No such post.")
+        post["photos"] = [r["id"] for r in db.execute(
+            "SELECT id FROM feedback_photo WHERE post = %s ORDER BY id", (post_id,))]
         return post
 
 

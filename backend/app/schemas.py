@@ -838,6 +838,11 @@ class FeedbackPost(BaseModel):
     created: datetime
     reply_to: int | None     # id of the post this replies to; None for a top-level post
     photos: list[int]        # ids for GET /api/feedback/photos/{id}
+    done: bool               # marked as done by any visitor; posts only, never replies
+
+
+class FeedbackDone(BaseModel):
+    done: bool
 
 
 # --------------------------------------------------------------------------- assistant

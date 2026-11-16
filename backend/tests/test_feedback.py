@@ -30,7 +30,7 @@ def test_post_round_trips(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
     post = client.post("/api/feedback", json={"author": " Ada ", "body": "Line one\nline two"}).json()
     assert post["author"] == "Ada" and post["body"] == "Line one\nline two"
-    assert post["reply_to"] is None and post["photos"] == []
+    assert post["reply_to"] is None and post["photos"] == [] and post["done"] is False
     assert client.get("/api/feedback").json()[0] == post
 
     png = b"\x89PNG\r\n\x1a\n fake"
@@ -41,6 +41,11 @@ def test_post_round_trips(monkeypatch):
     assert photo.content == png and photo.headers["content-type"] == "image/png"
     assert photo.headers["x-content-type-options"] == "nosniff"
     assert client.get("/api/feedback").json()[0] == reply
+    # anyone marks a post as done and open again; replies and unknown posts cannot be marked
+    mark = lambda i, done: client.post(f"/api/feedback/{i}/done", json={"done": done})  # noqa: E731
+    assert mark(post["id"], True).json() == {**post, "done": True}
+    assert mark(post["id"], False).json() == post
+    assert mark(reply["id"], True).status_code == 404 and mark(10**9, True).status_code == 404
     # one level of replies only, and only to posts that exist
     assert client.post("/api/feedback", json={"body": "x", "reply_to": reply["id"]}).status_code == 422
     assert client.post("/api/feedback", json={"body": "x", "reply_to": 10**9}).status_code == 422
