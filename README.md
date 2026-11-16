@@ -94,7 +94,8 @@ docs/hackathon/          historical, git-ignored: review of the six hackathon pr
 | `GET /api/tables`, `DELETE /api/tables/{id}/rows/{i}` | tables of the Add data form; delete a hand-entered row |
 | `POST /api/rows`, `POST /api/rows/check` | save rows to one or more tables in one build (all or nothing); check them first (writes are off with `READ_ONLY=1`) |
 | `POST /api/extract` | text of an uploaded PDF or text file, for the assistant |
-| `GET /api/feedback`, `POST /api/feedback` | feedback posts, newest first; post one (open to all, also with `READ_ONLY=1`; needs `DATABASE_URL`) |
+| `GET /api/feedback`, `POST /api/feedback` | feedback posts and their replies, newest first; post one or a reply, with up to 4 photos (PNG, JPEG, GIF, WebP, 8 MB each) (open to all, also with `READ_ONLY=1`; needs `DATABASE_URL`) |
+| `GET /api/feedback/photos/{id}` | one attached photo, as the image file |
 | `GET /api/chat/models`, `POST /api/chat` | assistant: models and demo questions; streamed answer |
 
 Interactive docs at `http://localhost:8000/docs`.

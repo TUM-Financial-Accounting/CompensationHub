@@ -1,9 +1,9 @@
 """Response models. Amounts are k€, shares are fractions (0–1) unless named `_pct`."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import Base64Bytes, BaseModel, Field, StringConstraints
 
 
 class Quantiles(BaseModel):
@@ -795,9 +795,19 @@ class Extracted(BaseModel):
 # --------------------------------------------------------------------------- feedback
 
 
+MAX_PHOTO = 8 * 2**20     # bytes per photo
+
+
+class Photo(BaseModel):
+    type: Literal["image/png", "image/jpeg", "image/gif", "image/webp"]
+    data: Annotated[Base64Bytes, Field(max_length=MAX_PHOTO)]  # base64 in JSON
+
+
 class NewFeedback(BaseModel):
     author: Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)] = ""
     body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
+    reply_to: int | None = None   # id of the post this replies to; None for a new post
+    photos: Annotated[list[Photo], Field(max_length=4)] = []
 
 
 class FeedbackPost(BaseModel):
@@ -805,6 +815,8 @@ class FeedbackPost(BaseModel):
     author: str              # '' when posted anonymously
     body: str
     created: datetime
+    reply_to: int | None     # id of the post this replies to; None for a top-level post
+    photos: list[int]        # ids for GET /api/feedback/photos/{id}
 
 
 # --------------------------------------------------------------------------- assistant

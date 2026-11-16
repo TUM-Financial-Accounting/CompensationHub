@@ -398,8 +398,9 @@ export interface Extracted { name: string; text: string; pages: number | null; t
 
 // ------------------------------------------------------------------ feedback
 
-/** `author` is '' for anonymous posts; `created` is an ISO timestamp. */
-export interface FeedbackPost { id: number; author: string; body: string; created: string }
+/** `author` is '' for anonymous posts; `created` is an ISO timestamp; `reply_to` is the post a reply
+ * answers (null for a post); `photos` are ids for `/api/feedback/photos/{id}`. */
+export interface FeedbackPost { id: number; author: string; body: string; created: string; reply_to: number | null; photos: number[] }
 
 // ------------------------------------------------------------------ assistant
 
@@ -438,6 +439,15 @@ export async function send<T>(method: 'POST' | 'DELETE', path: string, body?: un
   if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `${r.status} ${r.statusText}`)
   return data as T
 }
+
+/** A file as a `data:` URL; the base64 content follows the first comma. */
+export const readDataUrl = (f: File) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = () => reject(r.error)
+    r.readAsDataURL(f)
+  })
 
 export interface ChatRequest { model: string; thinking: string; messages: ChatMessage[]; page: string; draft: TableRows[] | null }
 

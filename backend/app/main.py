@@ -20,7 +20,7 @@ import pandas as pd
 import psycopg
 from fastapi import FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 
@@ -676,7 +676,13 @@ FEEDBACK_TABLE = """CREATE TABLE IF NOT EXISTS feedback (
     id serial PRIMARY KEY,
     author text NOT NULL DEFAULT '',
     body text NOT NULL,
-    created timestamptz NOT NULL DEFAULT now())"""
+    created timestamptz NOT NULL DEFAULT now());
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS reply_to int REFERENCES feedback ON DELETE CASCADE;
+CREATE TABLE IF NOT EXISTS feedback_photo (
+    id serial PRIMARY KEY,
+    post int NOT NULL REFERENCES feedback ON DELETE CASCADE,
+    type text NOT NULL,
+    data bytea NOT NULL)"""
 
 
 def feedback_db() -> psycopg.Connection:
@@ -693,18 +699,40 @@ def feedback_db() -> psycopg.Connection:
 
 @app.get("/api/feedback", response_model=list[s.FeedbackPost])
 def feedback():
-    """Feedback posts users left on the dashboard (bugs, wishes, questions), newest first."""
+    """Feedback posts users left on the dashboard (bugs, wishes, questions) and their replies,
+    newest first; `reply_to` is the post a reply answers, `photos` the ids of attached photos."""
     with feedback_db() as db:  # ponytail: newest 500 only, paginate when there are more
-        return db.execute("SELECT * FROM feedback ORDER BY id DESC LIMIT 500").fetchall()
+        return db.execute("""SELECT f.*, array_remove(array_agg(p.id ORDER BY p.id), NULL) AS photos
+            FROM feedback f LEFT JOIN feedback_photo p ON p.post = f.id
+            GROUP BY f.id ORDER BY f.id DESC LIMIT 500""").fetchall()
+
+
+@app.get("/api/feedback/photos/{photo_id}", include_in_schema=False)
+def feedback_photo(photo_id: int):
+    """One photo attached to a feedback post, as the image file."""
+    with feedback_db() as db:
+        row = db.execute("SELECT type, data FROM feedback_photo WHERE id = %s", (photo_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "No such photo.")
+    # The type is one of the image types NewFeedback allows; nosniff keeps browsers to it.
+    return Response(row["data"], media_type=row["type"], headers={
+        "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @app.post("/api/feedback", response_model=s.FeedbackPost)
 def post_feedback(body: s.NewFeedback):
-    """Save a feedback post. Open to every visitor, also with READ_ONLY set."""
+    """Save a feedback post or a reply, with its photos. Open to every visitor, also with READ_ONLY set."""
     # ponytail: no login or rate limit; delete spam in the database, add both if it gets abused
     with feedback_db() as db:
-        return db.execute("INSERT INTO feedback (author, body) VALUES (%s, %s) RETURNING *",
-                          (body.author, body.body)).fetchone()
+        if body.reply_to is not None:
+            parent = db.execute("SELECT reply_to FROM feedback WHERE id = %s", (body.reply_to,)).fetchone()
+            if parent is None or parent["reply_to"] is not None:
+                raise HTTPException(422, "Replies go to an existing post, not to another reply.")
+        post = db.execute("INSERT INTO feedback (author, body, reply_to) VALUES (%s, %s, %s) RETURNING *",
+                          (body.author, body.body, body.reply_to)).fetchone()
+        post["photos"] = [db.execute("INSERT INTO feedback_photo (post, type, data) VALUES (%s, %s, %s) RETURNING id",
+                                     (post["id"], p.type, p.data)).fetchone()["id"] for p in body.photos]
+        return post
 
 
 # --------------------------------------------------------------------------- assistant

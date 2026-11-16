@@ -1,7 +1,7 @@
 import * as Plot from '@observablehq/plot'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 
-import { clearCache, send, useApi, type ChartSpec, type DataTable, type Draft, type Extracted, type RowFindings } from '../api'
+import { clearCache, readDataUrl, send, useApi, type ChartSpec, type DataTable, type Draft, type Extracted, type RowFindings } from '../api'
 import { base } from '../charts'
 import { useChat, type AssistantTurn, type Step } from '../chat'
 import { ArrowUp, Check, ChevronRight, Maximize2, MessageSquare, Paperclip, Square, X } from '../icons'
@@ -226,12 +226,7 @@ function Composer({ disabled }: { disabled: boolean }) {
     if (f.size > MAX_UPLOAD) return setReading(`${f.name} is larger than 15 MB.`)
     setReading(`Reading ${f.name}…`)
     try {
-      const data = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader()
-        r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
-        r.onerror = () => reject(r.error)
-        r.readAsDataURL(f)
-      })
+      const data = (await readDataUrl(f)).split(',')[1] ?? ''
       setAttachment(await send<Extracted>('POST', '/extract', { name: f.name, data }))
       setReading(undefined)
     } catch (e) {
