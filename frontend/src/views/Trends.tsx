@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { COMPONENTS, useApi, type Role, type Scope, type Trends } from '../api'
 import { REGIME_BREAK, base, componentScale, meurAxis, regimeBreak, roleScale, yearAxis, yearBar } from '../charts'
 import { COMPONENT_COLOR, COMPONENT_LABEL, ROLE_LABEL, meur, pct, spell } from '../format'
-import { Async, Chart, Legend, PageHead, Panel, PanelsSkeleton, Segmented } from '../ui'
+import { Async, Chart, Legend, Panel, PanelsSkeleton, Segmented } from '../ui'
 
 const SCOPES = [
   { value: 'dax' as Scope, label: 'DAX' },
@@ -12,16 +12,13 @@ const SCOPES = [
 ]
 const ROLES = Object.values(ROLE_LABEL)
 
-export function TrendsView() {
+/** Pay level, mix, CEO premium and opt-outs over time; shown on the Overview under the headline chart. */
+export function TrendsPanels() {
   const [scope, setScope] = useState<Scope>('dax')
   const state = useApi<Trends>(`/trends?scope=${scope}`)
 
   return (
     <>
-      <PageHead title="Pay trends">
-        How much management boards are paid, how the package is composed and how far the CEO is ahead of the rest of
-        the board. Full-year executives only.
-      </PageHead>
       <div className="controls">
         <Segmented label="Firms" options={SCOPES} value={scope} onChange={setScope} />
         {scope === 'all' && (
@@ -33,7 +30,7 @@ export function TrendsView() {
           <>
             <Panel
               title="Pay level by role"
-              caption="Median total compensation (line) and the middle 50 % of executives (band), in € million."
+              caption="Median total compensation (line) and the middle 50 % of executives (band), in € million. Full-year executives only."
             >
               <Chart label="Median pay by role over time" render={(width) => levels(t, width)} />
             </Panel>

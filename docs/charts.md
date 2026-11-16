@@ -20,9 +20,8 @@ frontend only draws it. Unless a chart says otherwise:
   median (line), middle 50 % (dark band) and middle 80 % (light band) are drawn. Co-CEOs count
   individually.
 
-## Pay trends
-
-The DAX / All firms switch changes which firms are included in every chart on the page.
+Pay trends follow on the same page. Their DAX / All firms switch changes which firms are included
+in the four charts below it.
 
 - **Pay level by role.** Same method as the Overview chart, done separately for CEOs, CFOs and
   other board members: median line plus a band for the middle 50 %.
@@ -36,8 +35,10 @@ The DAX / All firms switch changes which firms are included in every chart on th
 
 ## Companies
 
+- **Board total.** One dot per firm, placed by the pay of all its board members together in its
+  latest year; dots are stacked so they do not overlap. Clicking a dot opens the company.
 - **Company list.** One row per firm with its latest year in the data, index, board total and
-  the CEO's pay.
+  the CEO's pay. The filters (latest year or all firms, index, search) apply to chart and list.
 - **Headline numbers (company page).** Board total and number of members, the CEO's pay, the
   CEO-to-employee ratio and the shareholder return in the latest year.
 - **Board pay by component.** For each year, the pay of all board members of the firm is added
@@ -70,6 +71,11 @@ zones mark the verdicts *above* (from 1.5×) and *below* (up to 1 / 1.5). Colour
 family of a definition (fixed groups, industry first, nearest neighbours), the symbol the
 definition within it.
 
+- **Compare firms and executives of your choice.** The executives of one year and role at
+  hand-picked firms, plus executives picked one by one. Each is set against the chosen
+  executives of the other firms with the statistics of a peer
+  definition (median, pay ÷ median, percentile, verdict); below five other firms only pay is
+  shown. The dashed line is the median of all chosen executives.
 - **Headline numbers.** Typical gap (median distance between pay and the peer median) of the
   best and the weakest definition and of no selection; share of CEO-years *above* under some
   definitions but not under all; share of the gap closed within a year under the definition
@@ -111,8 +117,7 @@ year + market drift" on the same executive-years. Everything is scored per discl
 
 - **Headline numbers.** The most accurate model for total pay and its typical miss; in how many
   pay items a model that looks only at the executive's own past is the most accurate; the range
-  of the neural network's typical miss over three random starts; the pay gap of women and of
-  German executives after role, firm size, tenure and age (shown, never used for predictions).
+  of the neural network's typical miss over three random starts.
 - **Who beats "last year + market drift"?** One cell per model and pay item: how much smaller
   its error is than the baseline's. A ring marks the model shown on executive pages.
 - **How far off, and how honest the range.** Per pay item: typical miss of each model, and the
@@ -155,6 +160,10 @@ year + market drift" on the same executive-years. Everything is scored per discl
 
 ## Board & workforce
 
+- **Gender pay gap after characteristics.** The coefficient of *woman* (and of *German
+  nationality*) in the pay regression with role, firm size, tenure and age
+  ([`prediction.md`](prediction.md#models)), as a percentage; all years. It describes the data
+  and never enters a prediction.
 - **Board composition.** Per year, the share of women and of members without German
   nationality among all board members, part-year members included. Dual nationals with German
   citizenship count as German.

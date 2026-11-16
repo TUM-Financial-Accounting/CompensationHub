@@ -11,6 +11,8 @@ import base64
 import json
 import os
 import threading
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Literal
@@ -18,7 +20,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import psycopg
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,7 +31,7 @@ from . import schemas as s
 from .forecast import BAND, HORIZONS, MODEL_IDS, MODELS, TARGETS, get_forecasts, what_if
 from .panel import COMPONENTS, ROOT, Panel, get_panel
 from .peers import (BASELINE, HIGH, METHOD_IDS, METHODS, MIN_PAY, MIN_PEER_FIRMS, Benchmarks,
-                    Method, fragility, get_benchmarks)
+                    Method, fragility, get_benchmarks, group_peers, peer_stats)
 
 Scope = Literal["dax", "all"]
 Role = Literal["CEO", "CFO", "Member"]
@@ -397,6 +399,29 @@ def peer_verdicts(year: int, role: Role = "CEO"):
     return {"year": year, "role": role, "rows": out}
 
 
+@app.get("/api/peers/compare", response_model=s.PeerCompare)
+def peer_compare(year: int, firms: str = "", people: str = "", role: Role = "CEO"):
+    """Hand-picked comparison in one year and role: every executive of the chosen firms (`firms`:
+    firm ids separated by commas) plus single chosen executives (`people`: person ids), each
+    against the chosen executives of the other firms. Same rules as the peer definitions: never
+    the own firm, no result with fewer than min_peer_firms other firms."""
+    b = get_benchmarks()
+    firm_ids, person_ids = ({x.strip() for x in v.split(",") if x.strip()} for v in (firms, people))
+    rows = b.rows[(b.rows["year"] == year) & (b.rows["role"] == role)
+                  & (b.rows["firm_id"].isin(firm_ids) | b.rows["person_id"].isin(person_ids))]
+    by_row = {}
+    if rows["firm_id"].nunique() > MIN_PEER_FIRMS:
+        chosen = group_peers(rows, pd.Series(0, index=rows.index),
+                             pd.Series("chosen executives", index=rows.index))
+        by_row = results_by_row(peer_stats(rows, chosen).assign(method="custom"))
+    rows = rows.sort_values("total", ascending=False)
+    return {"year": year, "role": role, "n_firms": rows["firm_id"].nunique(),
+            "min_peer_firms": MIN_PEER_FIRMS,
+            "median": rows["total"].median() if len(rows) else None,
+            "rows": [{**r, "result": (by_row.get(row) or [None])[0]}
+                     for row, r in zip(rows.index, records(rows))]}
+
+
 @app.get("/api/peers/{method}", response_model=s.PeerMethodView)
 def peer_method(method: str, year: int | None = None, role: Role = "CEO"):
     """One definition in one year and role: every executive with their result (or none), the
@@ -737,13 +762,29 @@ def post_feedback(body: s.NewFeedback):
 
 # --------------------------------------------------------------------------- assistant
 
+CHAT_PER_MINUTE = 20     # questions per visitor: the LLM key is paid per call
+_asked: dict[str, deque] = defaultdict(deque)
+
+
+def chat_budget(request: Request) -> None:
+    # ponytail: in-memory and keyed by a header a client can forge; put a login or a proxy
+    # limit in front if the hosted key gets abused
+    who = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")
+           ).split(",")[0].strip()
+    now, asked = time.monotonic(), _asked[who]
+    while asked and now - asked[0] > 60:
+        asked.popleft()
+    if len(asked) >= CHAT_PER_MINUTE:
+        raise HTTPException(429, f"More than {CHAT_PER_MINUTE} questions a minute: wait a moment.")
+    asked.append(now)
+
 
 @app.get("/api/chat/models", response_model=s.ChatSetup)
 def chat_models():
     return {"models": assistant.models(), "examples": assistant.examples()}
 
 
-@app.post("/api/chat")
+@app.post("/api/chat", dependencies=[Depends(chat_budget)])
 def chat(body: s.ChatRequest):
     """Streams the assistant's work as JSON lines: tool calls, their results, the answer."""
     draft = [c.model_dump() for c in body.draft] if body.draft else None

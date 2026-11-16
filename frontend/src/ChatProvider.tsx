@@ -6,7 +6,7 @@ import { ChatContext, type AssistantTurn, type Chat, type Turn, type UserTurn } 
 const content = (t: UserTurn) =>
   t.attachment ? `${t.text}\n\nAttached document "${t.attachment.name}"${t.attachment.truncated ? ' (cut to its first part)' : ''}:\n${t.attachment.text}` : t.text
 
-export function ChatProvider({ page, children }: { page: string; children: ReactNode }) {
+export function ChatProvider({ page, openAdd, children }: { page: string; openAdd: () => void; children: ReactNode }) {
   const setup = useApi<ChatSetup>('/chat/models').data
   const [picked, setModel] = useState<string>()
   const [pickedThinking, setThinking] = useState('off')
@@ -76,6 +76,7 @@ export function ChatProvider({ page, children }: { page: string; children: React
     reset: () => (setTurns([]), setDraft(null), setNotice(undefined)),
     draft,
     setDraft,
+    openAdd,
     notice,
     setNotice,
   }

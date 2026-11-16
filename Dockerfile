@@ -16,5 +16,8 @@ COPY data data
 COPY docs docs
 COPY --from=web /web/dist frontend/dist
 ENV PATH="/srv/backend/.venv/bin:$PATH"
+# Hosted = public: writes are off unless the service sets READ_ONLY=0. Rows saved in a container
+# are lost on the next deploy anyway.
+ENV READ_ONLY=1
 WORKDIR /srv/backend
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}

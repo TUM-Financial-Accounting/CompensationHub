@@ -43,6 +43,16 @@ peer median, *below* up to 1 / 1.5, *in line* in between. The 1.5 is a conventio
 every chart; ISS's "multiple of median" concern thresholds for CEOs are higher (around 2.3× and
 3.3× in the US), with peer groups of 12–24 firms.
 
+## Hand-picked comparison
+
+Besides the six definitions, the Peer benchmark page lets the user choose firms (all their
+executives of the role) and single executives (`GET /api/peers/compare?year=&role=&firms=&people=`).
+The chosen executives form one peer group: each is compared with the chosen executives of the
+other firms in the same year and role,
+with the same statistics and the same minimum of five peer firms. It is a tool for a specific
+question ("these eight car makers"), not a seventh definition: it has no scorecard and enters no
+verdict count.
+
 ## Industry: NAICS 2022 codes
 
 `data/reference/industries.csv` gives each of the 164 firms a six-digit **NAICS 2022** code

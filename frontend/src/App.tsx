@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { useApi, type PeerOverview, type PredictionOverview } from './api'
 import { MODEL_FAMILY_COLOR } from './charts'
 import { ChatProvider } from './ChatProvider'
-import { BarChart, Briefcase, Building2, Home, LineChart, Menu, MessageSquare, MessagesSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, TrendingUp, Users, X } from './icons'
+import { BarChart, Briefcase, Building2, Home, LineChart, Menu, MessageSquare, MessagesSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, Users, X } from './icons'
 import { useScrollLock } from './lock'
 import { useTheme, type Theme } from './theme'
 import { ErrorBoundary, Segmented } from './ui'
@@ -19,12 +19,10 @@ import { Overview } from './views/Overview'
 import { MethodMark, PeerMethodPage, PeersView } from './views/Peers'
 import { PredictionModelPage, PredictionView } from './views/Prediction'
 import { QualityView } from './views/Quality'
-import { TrendsView } from './views/Trends'
 
 const NAV = [
   ['', 'Overview', Home],
   ['assistant', 'Assistant', MessageSquare],
-  ['trends', 'Pay trends', TrendingUp],
   ['companies', 'Companies', Building2],
   ['executives', 'Executives', Users],
   ['peers', 'Peer benchmark', Scale],
@@ -50,9 +48,8 @@ function useRoute(): string[] {
 function page([section, id]: string[]) {
   switch (section) {
     case undefined:
+    case 'trends': // old links: pay trends are part of the overview now
       return <Overview />
-    case 'trends':
-      return <TrendsView />
     case 'companies':
       return id ? <Company id={id} /> : <Companies />
     case 'executives':
@@ -258,7 +255,7 @@ export default function App() {
   useScrollLock(menu)
 
   const closeMenu = () => drawer.current?.close()
-  const active = route[0] === 'people' ? 'executives' : (route[0] ?? '')
+  const active = route[0] === 'people' ? 'executives' : route[0] === 'trends' ? '' : (route[0] ?? '')
   const sidebar = { route, active, sections, subViews, onAdd: () => setAdding(true), theme, onTheme: setTheme }
   const label = NAV.find(([path]) => path === active)?.[1] ?? 'DAX Executive Pay'
 
@@ -279,7 +276,7 @@ export default function App() {
   }, [])
 
   return (
-    <ChatProvider page={key}>
+    <ChatProvider page={key} openAdd={() => setAdding(true)}>
       <div className="app">
         <a className="skip" href="#main" onClick={(e) => (e.preventDefault(), main.current?.focus())}>
           Skip to content

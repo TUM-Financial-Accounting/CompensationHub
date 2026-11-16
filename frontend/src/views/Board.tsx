@@ -1,7 +1,7 @@
 import * as Plot from '@observablehq/plot'
 import { useState } from 'react'
 
-import { useApi, type Board as BoardData, type Scope, type YearValue } from '../api'
+import { useApi, type Board as BoardData, type PredictionOverview, type Scope, type YearValue } from '../api'
 import { base, labelAxis, narrow, regimeBreak, yearAxis } from '../charts'
 import { keur, meur, pct, signed, times } from '../format'
 import { Async, Chart, Legend, PageHead, Panel, PanelsSkeleton, Segmented, Stat } from '../ui'
@@ -9,6 +9,7 @@ import { Async, Chart, Legend, PageHead, Panel, PanelsSkeleton, Segmented, Stat 
 export function Board() {
   const state = useApi<BoardData>('/board')
   const [scope, setScope] = useState<Scope>('dax')
+  const gap = useApi<PredictionOverview>('/prediction').data // from the pay regression; may still be computing
   const [picked, setYear] = useState<number>()
 
   return (
@@ -79,6 +80,13 @@ export function Board() {
               </Panel>
 
               <div className="stats">
+                {gap && (
+                  <Stat
+                    label="Gender pay gap after characteristics"
+                    value={signed(gap.gap_woman)}
+                    sub={`women vs. men with the same role, firm size, tenure and age, all years (German nationality: ${signed(gap.gap_german)})`}
+                  />
+                )}
                 {latest && (
                   <Stat label={`Median board age ${latest.year}`} value={`${latest.median_age ?? '–'}`} sub={`${diversity[0].median_age ?? '–'} in ${diversity[0].year}`} />
                 )}

@@ -75,12 +75,13 @@ docs/hackathon/          historical, git-ignored: review of the six hackathon pr
 | Route | Serves |
 |---|---|
 | `GET /api/summary` | headline numbers, DAX CEO pay quantiles per year |
-| `GET /api/trends?scope=dax\|all` | pay level by role, pay mix, CEO premium, opt-out rate |
+| `GET /api/trends?scope=dax\|all` | (shown on the Overview) pay level by role, pay mix, CEO premium, opt-out rate |
 | `GET /api/firms`, `/api/firms/{id}` | company list; one company's years, executives, plan design |
 | `GET /api/executives?year=` | every executive in a year |
 | `GET /api/people/{id}` | one executive's career |
 | `GET /api/peers` | peer definitions with their scorecard, agreement, convergence |
 | `GET /api/peers/verdicts?year=&role=` | every executive of a year and role under each definition |
+| `GET /api/peers/compare?year=&role=&firms=&people=` | hand-picked firms and executives: each executive against those of the other chosen firms |
 | `GET /api/peers/{definition}?year=&role=` | one definition: results, chosen peers, groups, model details |
 | `GET /api/firms/{id}/peers` | the firm's CEOs against peers, every year and definition |
 | `GET /api/design` | KPI categories, caps, ESG weights, maximum pay (2022–2024) |

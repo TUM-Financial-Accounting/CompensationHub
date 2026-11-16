@@ -114,3 +114,21 @@ def test_industry_widens_from_group_to_subsector_and_stops_at_sector():
 def test_sector_codes_span_combined_ranges():
     assert list(sector_of(pd.Series(["325412", "445110", "492110", "522110"]))) == [
         "31-33", "44-45", "48-49", "52"]
+
+
+def test_hand_picked_comparison_uses_only_the_other_chosen_firms(bench):
+    from app.main import peer_compare
+
+    rows = bench.rows[(bench.rows["year"] == bench.rows["year"].max()) & (bench.rows["role"] == "CEO")]
+    firms = rows["firm_id"].unique()[:MIN_PEER_FIRMS + 1]
+    out = peer_compare(int(rows["year"].iloc[0]), ",".join(firms))
+    pay = {r["firm_id"]: r["total"] for r in out["rows"]}
+    for r in out["rows"]:
+        others = [v for f, v in pay.items() if f != r["firm_id"]]
+        assert r["result"]["peer_median"] == pytest.approx(np.median(others))
+    few = peer_compare(int(rows["year"].iloc[0]), ",".join(firms[:MIN_PEER_FIRMS]))
+    assert few["rows"] and all(r["result"] is None for r in few["rows"])
+    one = rows.drop_duplicates("firm_id").head(MIN_PEER_FIRMS + 1)  # the same, picked by person
+    by_person = peer_compare(int(rows["year"].iloc[0]), people=",".join(one["person_id"]))
+    assert {r["person_id"] for r in by_person["rows"]} == set(one["person_id"])
+    assert all(r["result"] for r in by_person["rows"])

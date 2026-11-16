@@ -68,11 +68,6 @@ function Overview({ o }: { o: PredictionOverview }) {
           value={seeds.length ? `${logPct(Math.min(...seeds))}–${logPct(Math.max(...seeds))}` : '–'}
           sub="typical miss on total pay: same data, only the random starting point differs"
         />
-        <Stat
-          label="Pay gap after characteristics"
-          value={signed(o.gap_woman)}
-          sub={`women vs. men with the same role, firm size, tenure and age (German nationality: ${signed(o.gap_german)}); never used for predictions`}
-        />
       </div>
 
       <nav aria-label="Prediction models" className="views methods">

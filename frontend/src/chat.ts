@@ -33,6 +33,8 @@ export interface Chat {
   reset: () => void
   draft: Draft | null
   setDraft: (d: Draft | null) => void
+  /** Opens the Add data dialog, where drafts are reviewed and saved. */
+  openAdd: () => void
   notice?: string
   setNotice: (n?: string) => void
 }
@@ -41,3 +43,7 @@ export const ChatContext = createContext<Chat | null>(null)
 
 export const useChat = () => useContext(ChatContext)!
 
+
+export const MAX_UPLOAD = 15 * 1024 * 1024
+/** An attached document in one line: name, pages, whether it was cut. */
+export const describe = (a: Extracted) => `${a.name}${a.pages ? ` · ${a.pages} pages` : ''}${a.truncated ? ' · cut' : ''}`

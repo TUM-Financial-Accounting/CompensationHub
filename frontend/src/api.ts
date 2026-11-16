@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 
 // Mirrors backend/app/schemas.py. Amounts in k€, shares as fractions 0–1.
 
@@ -237,6 +237,16 @@ export interface PeerVerdicts {
   rows: { person_id: string; name: string; firm_id: string; firm: string; total: number; results: PeerResult[]; n_above: number }[]
 }
 
+/** GET /api/peers/compare: hand-picked firms, each executive against the other chosen firms. */
+export interface PeerCompare {
+  year: number
+  role: Role
+  n_firms: number
+  min_peer_firms: number
+  median: number | null
+  rows: { person_id: string; name: string; firm_id: string; firm: string; total: number; result: PeerResult | null }[]
+}
+
 export interface PeerExec {
   person_id: string
   name: string
@@ -424,9 +434,16 @@ export type Component = (typeof COMPONENTS)[number]
 // ------------------------------------------------------------------ fetching
 
 const cache = new Map<string, unknown>()
+let version = 0
+const watchers = new Set<() => void>()
+const watch = (fn: () => void) => (watchers.add(fn), () => void watchers.delete(fn))
 
-/** Forget every cached response, e.g. after data was added. */
-export const clearCache = () => cache.clear()
+/** Forget every cached response, e.g. after data was added; every mounted view then loads again. */
+export const clearCache = () => {
+  cache.clear()
+  version++
+  watchers.forEach((fn) => fn())
+}
 
 /** POST or DELETE with a JSON body; rejects with the backend's error message. */
 export async function send<T>(method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
@@ -477,8 +494,9 @@ export type Loadable<T> = { data?: T; error?: string; reload: () => void }
 /** GET /api{path}; responses are cached for the session so back-navigation is instant.
  *  A null path waits (e.g. until another request supplies a parameter). */
 export function useApi<T>(path: string | null): Loadable<T> {
-  const [result, setResult] = useState<{ path: string; data?: T; error?: string }>()
+  const [result, setResult] = useState<{ path: string; at: number; data?: T; error?: string }>()
   const [attempt, setAttempt] = useState(0)
+  const at = useSyncExternalStore(watch, () => version)
 
   useEffect(() => {
     if (path === null || cache.has(path)) return
@@ -487,15 +505,15 @@ export function useApi<T>(path: string | null): Loadable<T> {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`))))
       .then(
         (data: T) => {
-          cache.set(path, data)
-          if (live) setResult({ path, data })
+          if (at === version) cache.set(path, data)
+          if (live) setResult({ path, at, data })
         },
-        (e: Error) => live && setResult({ path, error: e.message }),
+        (e: Error) => live && setResult({ path, at, error: e.message }),
       )
     return () => {
       live = false
     }
-  }, [path, attempt])
+  }, [path, attempt, at])
 
   const reload = useCallback(() => {
     setResult(undefined)
@@ -503,6 +521,7 @@ export function useApi<T>(path: string | null): Loadable<T> {
   }, [])
 
   if (path !== null && cache.has(path)) return { data: cache.get(path) as T, reload }
-  // Ignore a result left over from a previous path while the new request is in flight.
-  return result?.path === path ? { data: result.data, error: result.error, reload } : { reload }
+  // Ignore a result left over from a previous path, or from before the cache was cleared.
+  if (result?.path !== path) return { reload }
+  return result.at === at ? { data: result.data, error: result.error, reload } : { data: result.data, reload }
 }

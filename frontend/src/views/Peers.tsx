@@ -1,9 +1,10 @@
 import * as Plot from '@observablehq/plot'
 import { useState } from 'react'
 
-import { useApi, type FirmPeerRow, type Loadable, type PeerExec, type PeerMethod, type PeerMethodView, type PeerOverview, type PeerVerdicts, type Role } from '../api'
+import { useApi, type FirmPeerRow, type Loadable, type PeerCompare, type PeerExec, type PeerMethod, type PeerMethodView, type PeerOverview, type PeerVerdicts, type Role } from '../api'
 import { FAMILY_COLOR, FAMILY_LABEL, REGIME_BREAK, base, labelAxis, meurAxis, methodStyle, narrow, onPick, ratioAxis, ratioPositions, regimeBreak, swarmHeight, verdictZones, yearAxis, yearBar } from '../charts'
 import { ROLE_LABEL, keur, logPct, meur, multiple, pct, spell } from '../format'
+import { X } from '../icons'
 import { Async, Chart, Legend, PageHead, PageSkeleton, Panel, PanelsSkeleton, Segmented, Skeleton, Stat, Table, type Column } from '../ui'
 
 // Every number on these pages comes from backend/app/peers.py; see docs/peers.md for the method.
@@ -15,6 +16,183 @@ const MANY: Record<Role, string> = { CEO: 'CEOs', CFO: 'CFOs', Member: 'other bo
 /** Legend items for the definitions: family colour plus a symbol per definition. */
 function methodLegend(methods: PeerMethod[]) {
   return methodStyle(methods).style.map((s) => ({ label: s.name, color: s.color, shape: s.symbol }))
+}
+
+// ------------------------------------------------------------------ hand-picked comparison
+
+const VERDICT_COLOR = { above: 'var(--warn)', 'in line': 'var(--c-member)', below: 'var(--accent)' }
+
+/** Firms the user picks, compared with each other: the same statistics as a peer definition, on a hand-made peer group. */
+function Custom({ o }: { o: PeerOverview }) {
+  const [picked, setYear] = useState<number>()
+  const [role, setRole] = useState<Role>('CEO')
+  const [ids, setIds] = useState<string[]>([])
+  const [people, setPeople] = useState<string[]>([])
+  const [text, setText] = useState('')
+  const [person, setPerson] = useState('')
+  const year = picked ?? o.years[o.years.length - 1]
+  const all = useApi<PeerVerdicts>(year ? `/peers/verdicts?year=${year}&role=${role}` : null)
+  const firms = [...new Map((all.data?.rows ?? []).map((r) => [r.firm_id, r.firm])).entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  const names = new Map(firms)
+  const chosen = ids.filter((id) => names.has(id)) // a firm without this role in this year waits for another year
+  // Executives are offered as "Name · Firm"; those of a chosen firm are in already.
+  const execs = new Map((all.data?.rows ?? []).filter((r) => !chosen.includes(r.firm_id)).map((r) => [r.person_id, `${r.name} · ${r.firm}`]))
+  const chosenPeople = people.filter((id) => execs.has(id))
+  const list = (ids: string[]) => ids.map(encodeURIComponent).join(',')
+  const state = useApi<PeerCompare>(
+    chosen.length + chosenPeople.length ? `/peers/compare?year=${year}&role=${role}&firms=${list(chosen)}&people=${list(chosenPeople)}` : null,
+  )
+  const addPerson = (value: string) => {
+    const hit = [...execs].find(([id, label]) => label.toLowerCase() === value.trim().toLowerCase() && !people.includes(id))
+    if (hit) setPeople([...people, hit[0]])
+    setPerson(hit ? '' : value)
+  }
+  const add = (value: string) => {
+    const hit = firms.find(([id, name]) => name.toLowerCase() === value.trim().toLowerCase() && !ids.includes(id))
+    if (hit) setIds([...ids, hit[0]])
+    setText(hit ? '' : value)
+  }
+  return (
+    <Panel
+      title="Compare firms and executives of your choice"
+      caption={`Pick whole firms, single executives, or both: each ${ONE[role]} is set against the chosen ${MANY[role]} of the other firms. A verdict needs at least ${o.min_peer_firms} other firms, as for every peer definition.`}
+      controls={
+        <>
+          <label className="field">
+            <span>Year</span>
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+              {[...o.years].reverse().map((y) => (
+                <option key={y}>{y}</option>
+              ))}
+            </select>
+          </label>
+          <Segmented label="Role" value={role} onChange={setRole} options={ROLES} />
+        </>
+      }
+    >
+      <div className="controls">
+        <label className="field">
+          <span>Add a firm</span>
+          <input type="search" list="compare-firms" value={text} onChange={(e) => add(e.target.value)} placeholder="Company name" />
+          <datalist id="compare-firms">
+            {firms
+              .filter(([id]) => !ids.includes(id))
+              .map(([id, name]) => (
+                <option key={id} value={name} />
+              ))}
+          </datalist>
+        </label>
+        <label className="field">
+          <span>Add an executive</span>
+          <input type="search" list="compare-people" value={person} onChange={(e) => addPerson(e.target.value)} placeholder="Name" />
+          <datalist id="compare-people">
+            {[...execs]
+              .filter(([id]) => !people.includes(id))
+              .map(([id, label]) => (
+                <option key={id} value={label} />
+              ))}
+          </datalist>
+        </label>
+        {ids.length + people.length > 0 && (
+          <button type="button" className="button" onClick={() => (setIds([]), setPeople([]))}>
+            Clear
+          </button>
+        )}
+      </div>
+      {chosen.length + chosenPeople.length > 0 && (
+        <div className="tags">
+          {chosen.map((id) => (
+            <span key={id} className="tag attachment">
+              <span className="name">{names.get(id)}</span>
+              <button type="button" className="tag-remove" aria-label={`Remove ${names.get(id)}`} onClick={() => setIds(ids.filter((i) => i !== id))}>
+                <X size={14} />
+              </button>
+            </span>
+          ))}
+          {chosenPeople.map((id) => (
+            <span key={id} className="tag attachment">
+              <span className="name">{execs.get(id)}</span>
+              <button type="button" className="tag-remove" aria-label={`Remove ${execs.get(id)}`} onClick={() => setPeople(people.filter((i) => i !== id))}>
+                <X size={14} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {chosen.length + chosenPeople.length === 0 ? (
+        <p className="muted">Nothing chosen yet.</p>
+      ) : (
+        <Async state={state} skeleton={<Skeleton height={300} />}>
+          {(c) => (
+            <>
+              {c.n_firms <= c.min_peer_firms && (
+                <p className="callout">
+                  Pay is shown side by side. Choose executives of at least {c.min_peer_firms + 1} firms for a peer median and a verdict.
+                </p>
+              )}
+              <Legend
+                items={[
+                  ...(c.rows.some((r) => r.result) ? [
+                        { label: `Above: at least ${o.high}× the median of the others`, color: VERDICT_COLOR.above },
+                        { label: 'In line', color: VERDICT_COLOR['in line'] },
+                        { label: `Below: at most 1 / ${o.high}`, color: VERDICT_COLOR.below },
+                      ] : []),
+                  ...(c.median != null ? [{ label: 'Median of the chosen', color: 'var(--ink)', shape: 'dash' as const }] : []),
+                ]}
+              />
+              <Chart
+                label={`Total pay of the ${c.rows.length} chosen ${MANY[role]} in ${year}${c.median != null ? `, median ${meur(c.median)}` : ''}.`}
+                render={(width) => customChart(c, width)}
+              />
+              <Table
+                caption={`Chosen ${MANY[role]} ${year}`}
+                rows={c.rows}
+                rowKey={(r) => `${r.person_id}-${r.firm_id}`}
+                sort={{ key: 'total', desc: true }}
+                columns={[
+                  { key: 'name', label: 'Name', value: (r) => r.name, render: (r) => <a href={`#/people/${r.person_id}`}>{r.name}</a> },
+                  { key: 'firm', label: 'Company', value: (r) => r.firm, render: (r) => <a href={`#/companies/${r.firm_id}`}>{r.firm}</a> },
+                  { key: 'total', label: 'Pay (k€)', numeric: true, value: (r) => r.total, render: (r) => keur(r.total) },
+                  { key: 'median', label: 'Median of the others', numeric: true, value: (r) => r.result?.peer_median, render: (r) => keur(r.result?.peer_median) },
+                  { key: 'ratio', label: 'Pay ÷ median', numeric: true, value: (r) => r.result?.ratio, render: (r) => <strong>{multiple(r.result?.ratio)}</strong> },
+                  { key: 'pct', label: 'Percentile', numeric: true, value: (r) => r.result?.percentile, render: (r) => pct(r.result?.percentile) },
+                  { key: 'verdict', label: 'Verdict', value: (r) => r.result?.verdict, render: (r) => r.result?.verdict ?? '–' },
+                ]}
+              />
+            </>
+          )}
+        </Async>
+      )}
+    </Panel>
+  )
+}
+
+function customChart(c: PeerCompare, width: number) {
+  const seen = new Set<string>()
+  const rows = c.rows.map((r) => {
+    const label = seen.has(r.firm) ? `${r.firm} (${r.name.split(' ').at(-1)})` : r.firm
+    seen.add(r.firm)
+    return { ...r, label }
+  })
+  const labels = labelAxis(rows.map((r) => r.label), width)
+  return Plot.plot({
+    ...base(width, rows.length * 22 + 70),
+    marginLeft: labels.marginLeft,
+    x: { ...meurAxis('Total pay, € million'), ticks: narrow(width) ? 3 : undefined },
+    y: { label: null, domain: rows.map((r) => r.label), tickFormat: labels.tickFormat },
+    marks: [
+      Plot.barX(rows, {
+        x: 'total',
+        y: 'label',
+        fill: (r: (typeof rows)[number]) => VERDICT_COLOR[r.result?.verdict ?? 'in line'],
+        fillOpacity: 0.85,
+        tip: true,
+        title: (r) => `${r.name} · ${r.firm}\n${meur(r.total, 2)}${r.result ? `\n${multiple(r.result.ratio)} the median of the ${r.result.n_firms} other firms (${meur(r.result.peer_median, 2)})` : ''}`,
+      }),
+      c.median != null ? Plot.ruleX([c.median], { stroke: 'var(--ink)', strokeDasharray: '3,3' }) : null,
+      Plot.ruleX([0]),
+    ],
+  })
 }
 
 // ------------------------------------------------------------------ overview
@@ -79,6 +257,7 @@ function Overview({ o }: { o: PeerOverview }) {
         ))}
       </nav>
 
+      <Custom o={o} />
       <Scorecard o={o} />
       <Agreement o={o} />
       <VerdictStrip o={o} />

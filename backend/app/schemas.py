@@ -374,6 +374,24 @@ class PeerVerdicts(BaseModel):
     rows: list[PeerVerdict]
 
 
+class PeerCompareRow(BaseModel):
+    person_id: str
+    name: str
+    firm_id: str
+    firm: str
+    total: float
+    result: PeerResult | None  # None: fewer than min_peer_firms other chosen firms
+
+
+class PeerCompare(BaseModel):
+    year: int
+    role: str
+    n_firms: int             # firms among the chosen executives of this year and role
+    min_peer_firms: int
+    median: float | None     # median pay of the chosen executives, k€
+    rows: list[PeerCompareRow]
+
+
 class PeerExec(BaseModel):
     person_id: str
     name: str
@@ -780,9 +798,12 @@ class RowFindings(BaseModel):
     findings: list[Finding]
 
 
+MAX_DOCUMENT = 21 * 2**20  # base64 characters: the 15 MB the dashboard lets you attach
+
+
 class Document(BaseModel):
-    name: str
-    data: str                # file content, base64
+    name: Annotated[str, StringConstraints(max_length=300)]
+    data: Annotated[str, StringConstraints(max_length=MAX_DOCUMENT)]  # file content, base64
 
 
 class Extracted(BaseModel):
@@ -835,13 +856,13 @@ class ChatSetup(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    role: str                # 'user' or 'assistant'
-    content: str
+    role: Literal["user", "assistant"]
+    content: Annotated[str, StringConstraints(max_length=400_000)]  # a question plus one attached document
 
 
 class ChatRequest(BaseModel):
     model: str
-    messages: list[ChatMessage]
+    messages: Annotated[list[ChatMessage], Field(max_length=200)]
     thinking: str = "off"    # one of the model's thinking settings
     page: str | None = None  # the dashboard page the user is on, e.g. 'companies/sap'
     draft: list[TableRows] | None = None  # rows proposed earlier, as the user has edited them

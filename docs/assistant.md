@@ -40,7 +40,7 @@ LLM never sees raw files and never does arithmetic: it picks tools, the tools co
 | Thinking | For the Morpheus models a *Thinking* control in the view, with the settings the Morpheus docs list: Gemma Off / On (`chat_template_kwargs.enable_thinking`), Qwen Off / Low / Medium / Extra high (plus `preserve_thinking` and `reasoning_effort`). Off by default; any other setting raises the token budget to 16,000. The reasoning (from the server's reasoning field or an inline `<think>` block) is shown collapsed above the answer and never sent back to the model | Off by default as in the review pilot: thinking costs time and tokens; on can help multi-step questions, and showing it makes the comparison visible. |
 | Memory | Stateless backend; the browser sends the conversation, the current page (`companies/sap`, …) and the current draft | No database. "This company" means the page you are on. |
 | Charts in answers | `chart(query, kind, x, y, color, title)` runs a read-only SQL query and the page draws a line, bar or dot chart with Observable Plot | The numbers come from SQL like everything else; the model only picks the encoding. |
-| Adding data by chat | `propose_rows` turns pasted text or an attached PDF into a draft (any of the Add data tables, several at once) with the checks of every row; the draft appears under the answer, editable cell by cell; *Save to the data* stores it through the same route as the form | The model never writes: only the user's click saves. Asking "change the bonus to 3.1 M" makes the model redraft from the edited draft the browser sends along. |
+| Adding data by chat | `propose_rows` turns pasted text or an attached PDF into a draft (any of the Add data tables, several at once) with the checks of every row; the draft appears in **+ Add data → From a document (AI)**, editable cell by cell; *Save to the data* stores it through the same route as the form | The model never writes: only the user's click saves. Asking "change the bonus to 3.1 M" makes the model redraft from the edited draft the browser sends along. |
 | Output | Streamed JSON lines: each tool call with its arguments, a preview of each result, then the answer. The view lists the calls as steps that expand to the raw call and result | The user sees what the assistant is doing and can check every number against the call that produced it. |
 
 ### Vector database (Milvus etc.): not needed
@@ -65,7 +65,9 @@ sets the default; without it the first model with a key is used.
 | `ollama` | none | not in the default list; for a model on this machine or a chair server: add e.g. `ollama:qwen3:8b` to `LLM_MODELS` and set `OLLAMA_BASE_URL` if the server is elsewhere. Pick a model with tool calling. |
 
 `READ_ONLY=1` (any value except empty, `0`, `false` or `no`) disables the write routes when the dashboard is hosted or
-shown to others; reading stays open.
+shown to others; reading stays open. The Docker image sets it; a hosted service that should accept rows sets
+`READ_ONLY=0` (rows saved in a container are lost on the next deploy). `/api/chat` takes 20 questions a minute per
+visitor (`CHAT_PER_MINUTE` in `main.py`) and `/api/extract` files up to 15 MB.
 
 ## Data entry
 
@@ -97,9 +99,10 @@ the file and its CSV header.
   next question. Forecasts start from each firm's latest year, so a firm with a 2025 row moves
   ahead while the others stay at 2024.
 
-### Adding data by chat
+### Adding data from a document
 
-Paste text from a remuneration report, or click **Attach** and pick a PDF (text files work
+Open **+ Add data → From a document (AI)** and attach a PDF or paste the figures; the Assistant's
+own **Attach** does the same, and the draft then waits in Add data (text files work
 too; up to 15 MB, the first 120,000 characters are read, pages are marked so the source can
 cite them). The assistant maps the report's terms to the canonical columns (e.g.
 Festvergütung → fixed, Performance Share Units → lti), converts € or T€ to k€, adds a

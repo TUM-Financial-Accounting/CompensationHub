@@ -1,9 +1,9 @@
 import * as Plot from '@observablehq/plot'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 
-import { clearCache, readDataUrl, send, useApi, type ChartSpec, type DataTable, type Draft, type Extracted, type RowFindings } from '../api'
+import { readDataUrl, send, type ChartSpec, type Extracted } from '../api'
 import { base } from '../charts'
-import { useChat, type AssistantTurn, type Step } from '../chat'
+import { MAX_UPLOAD, describe, useChat, type AssistantTurn, type Step } from '../chat'
 import { ArrowUp, Check, ChevronRight, Maximize2, MessageSquare, Paperclip, Square, X } from '../icons'
 import { useScrollLock } from '../lock'
 import { Chart, PageHead, Segmented, Skeleton } from '../ui'
@@ -11,7 +11,6 @@ import './Assistant.css'
 
 const THINKING_LABEL: Record<string, string> = { off: 'Off', on: 'On', low: 'Low', medium: 'Medium', xhigh: 'Extra high' }
 const SERIES = ['var(--c-ceo)', 'var(--c-cfo)', 'var(--c-lti)', 'var(--c-sti)', 'var(--c-mti)', 'var(--c-member)']
-const MAX_UPLOAD = 15 * 1024 * 1024
 
 const phone = matchMedia('(max-width: 639px)')
 const watchPhone = (notify: () => void) => {
@@ -194,7 +193,14 @@ function ChatBody({ inPanel = false }: { inPanel?: boolean }) {
             )}
           </div>
         )}
-        {chat.draft && <DraftEditor draft={chat.draft} />}
+        {chat.draft && (
+          <p className="callout">
+            A draft of rows is waiting.{' '}
+            <button type="button" className="link" onClick={chat.openAdd}>
+              Review and save it in Add data
+            </button>
+          </p>
+        )}
         {chat.notice && (
           <p className="status ok" role="status">
             {chat.notice}
@@ -206,7 +212,6 @@ function ChatBody({ inPanel = false }: { inPanel?: boolean }) {
   )
 }
 
-const describe = (a: Extracted) => `${a.name}${a.pages ? ` · ${a.pages} pages` : ''}${a.truncated ? ' · cut' : ''}`
 
 function Composer({ disabled }: { disabled: boolean }) {
   const chat = useChat()
@@ -329,7 +334,7 @@ const stepLabel = (s: Step) => {
   }
 }
 
-function Answer({ t }: { t: AssistantTurn }) {
+export function Answer({ t }: { t: AssistantTurn }) {
   const last = t.steps[t.steps.length - 1]
   const waiting = !t.done && (!last || last.preview !== undefined)
   const n = t.steps.length
@@ -379,7 +384,7 @@ function Answer({ t }: { t: AssistantTurn }) {
       {t.charts.map((c, i) => (
         <AnswerChart key={i} c={c} />
       ))}
-      {t.drafted && <p className="caption">Draft below: check and edit it, then save. Nothing is added before you click Save.</p>}
+      {t.drafted && <p className="caption">Drafted rows are in Add data: check and edit them there, then save. Nothing is added before you click Save.</p>}
       {t.unverified && t.unverified.length > 0 && <p className="caption">Marked numbers were not found in any tool result: check them before using them.</p>}
       {t.error && <p className="callout">{t.error}</p>}
     </div>
@@ -412,126 +417,6 @@ function AnswerChart({ c }: { c: ChartSpec }) {
         }
       />
     </figure>
-  )
-}
-
-/** The rows the assistant proposed, editable; checked again after each edit, saved on click. */
-function DraftEditor({ draft }: { draft: Draft }) {
-  const chat = useChat()
-  const tables = useApi<DataTable[]>('/tables').data
-  const [checks, setChecks] = useState<{ key: string; value: RowFindings[] }>()
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string>()
-  const key = JSON.stringify(draft.changes)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      send<RowFindings[]>('POST', '/rows/check', { changes: draft.changes }).then(
-        (value) => setChecks({ key, value }),
-        () => undefined,
-      )
-    }, 600)
-    return () => clearTimeout(timer)
-  }, [key, draft.changes])
-
-  const findings = checks?.key === key ? checks.value : draft.checks
-  const edit = (ti: number, ri: number, column: string | null, value?: string) =>
-    chat.setDraft({
-      ...draft,
-      changes: draft.changes.map((c, i) =>
-        i !== ti ? c : { ...c, rows: column === null ? c.rows.filter((_, j) => j !== ri) : c.rows.map((r, j) => (j === ri ? { ...r, [column]: value ?? '' } : r)) },
-      ),
-    })
-
-  async function save() {
-    setSaving(true)
-    setError(undefined)
-    try {
-      const { added } = await send<{ added: number }>('POST', '/rows', { changes: draft.changes })
-      clearCache()
-      chat.setDraft(null)
-      chat.setNotice(`Saved ${added} row${added === 1 ? '' : 's'}; the panel was rebuilt. Peer groups and forecasts update in the background (about three minutes).`)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const blocking = findings.some((f) => f.findings.some((x) => x.level === 'error'))
-  return (
-    <section className="draft" aria-label="Draft rows">
-      <h3>Draft — not saved yet</h3>
-      {draft.changes.map((c, ti) => {
-        const table = tables?.find((t) => t.id === c.table)
-        const used = new Set(c.rows.flatMap((r) => Object.keys(r).filter((k) => r[k] !== '')))
-        const columns = (table?.columns.filter((col) => col.required || used.has(col.name)).map((col) => ({ name: col.name, label: col.label + (col.unit ? ` (${col.unit})` : '') })) ?? [
-          ...used,
-        ].map((name) => ({ name, label: name })))
-        return (
-          <div key={ti} className="subchart">
-            <span className="seg-label">{table?.name ?? c.table}</span>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Field</th>
-                    {c.rows.map((_, ri) => (
-                      <th key={ri}>
-                        Row {ri + 1}{' '}
-                        <button type="button" className="link" onClick={() => edit(ti, ri, null)}>
-                          remove
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {columns.map((col) => (
-                    <tr key={col.name}>
-                      <th scope="row">{col.label}</th>
-                      {c.rows.map((r, ri) => (
-                        <td key={ri}>
-                          <input type="text" aria-label={`${col.label}, row ${ri + 1}`} value={r[col.name] ?? ''} onChange={(e) => edit(ti, ri, col.name, e.target.value)} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <ul className="findings">
-              {findings
-                .filter((f) => f.table === c.table)
-                .flatMap((f) =>
-                  f.findings.map((x, k) => (
-                    <li key={`${f.row}-${k}`} className={x.level}>
-                      <span className="level">{x.level}</span>
-                      <span>
-                        Row {f.row + 1}: {x.message}
-                      </span>
-                    </li>
-                  )),
-                )}
-            </ul>
-          </div>
-        )
-      })}
-      <div className="form-actions">
-        <button type="button" className="button primary" onClick={save} disabled={saving || blocking || !draft.changes.some((c) => c.rows.length)}>
-          {saving ? 'Saving and rebuilding…' : 'Save to the data'}
-        </button>
-        <button type="button" className="button" onClick={() => chat.setDraft(null)} disabled={saving}>
-          Discard
-        </button>
-        <span className="caption">Edit cells here, or ask the assistant to change the draft.</span>
-        {error && (
-          <span className="status bad" role="alert">
-            {error}
-          </span>
-        )}
-      </div>
-    </section>
   )
 }
 

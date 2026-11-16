@@ -3,10 +3,10 @@ import * as Plot from '@observablehq/plot'
 import { useApi, type PeerOverview, type Summary } from '../api'
 import { base, meurAxis, narrow, regimeBreak, yearAxis } from '../charts'
 import { meur, pct, spell, times } from '../format'
+import { TrendsPanels } from './Trends'
 import { Async, Chart, Legend, PageHead, Panel, Stat } from '../ui'
 
 const views = (peerDefinitions: number | undefined) => [
-  ['trends', 'Pay trends', 'Level, mix and dispersion of board pay over time, by role and index.'],
   ['companies', 'Companies', 'One page per firm: board pay history, CEO against the DAX, plan design.'],
   ['executives', 'Executives', 'Every board member in a given year, and each career across years.'],
   [
@@ -95,6 +95,7 @@ export function Overview() {
           </>
         )}
       </Async>
+      <TrendsPanels />
       <nav aria-label="Views" className="views">
         {views(peers.data?.methods.length).map(([path, title, text]) => (
           <a key={path} href={`#/${path}`}>

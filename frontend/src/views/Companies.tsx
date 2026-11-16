@@ -2,9 +2,9 @@ import * as Plot from '@observablehq/plot'
 import { Fragment, useMemo, useState } from 'react'
 
 import { COMPONENTS, useApi, type ExecYear, type Extra, type FirmDetail, type FirmListItem, type Kpi, type EsgKind } from '../api'
-import { OPT_OUT_FILL, REGIME_BREAK, base, type Bar, componentScale, meurAxis, regimeBreak, yearAxis, yearBar } from '../charts'
+import { OPT_OUT_FILL, REGIME_BREAK, base, type Bar, componentScale, meurAxis, onPick, regimeBreak, swarmHeight, yearAxis, yearBar } from '../charts'
 import { COMPONENT_COLOR, COMPONENT_LABEL, keur, meur, pct, times } from '../format'
-import { Async, Chart, Legend, PageHead, PageSkeleton, Panel, Segmented, Stat, Table, type Column } from '../ui'
+import { Async, Chart, Legend, PageHead, PageSkeleton, Panel, PanelsSkeleton, Segmented, Stat, Table, type Column } from '../ui'
 import { execColumns } from './columns'
 import { CeoPeers } from './Peers'
 import { FirmForecastPanel } from './Prediction'
@@ -13,55 +13,92 @@ export function Companies() {
   const state = useApi<FirmListItem[]>('/firms')
   const [query, setQuery] = useState('')
   const [current, setCurrent] = useState(true)
+  const [index, setIndex] = useState('all')
+  const firms = state.data ?? []
+  const last = Math.max(...firms.map((f) => f.last_year))
+  const first = Math.min(...firms.map((f) => f.first_year))
+  const shown = firms.filter((f) => !current || f.last_year === last)
+  const indexes = [...new Set(shown.map((f) => f.index).filter((i): i is string => !!i))].sort()
 
   return (
     <>
       <PageHead title="Companies">
-        Every firm in the panel with its latest reported year. Open a company for its full pay history.
+        Every firm in the panel with its latest reported year. Hover or tap a dot for details, click or tap it again to open the company.
       </PageHead>
-      <Async state={state} height={1700}>
-        {(firms) => {
-          if (!firms.length) return <p className="muted">No firms in the panel.</p>
-          const last = Math.max(...firms.map((f) => f.last_year))
-          const first = Math.min(...firms.map((f) => f.first_year))
-          const rows = firms.filter(
-            (f) => (!current || f.last_year === last) && f.name.toLowerCase().includes(query.trim().toLowerCase()),
+      <div className="controls">
+        {firms.length > 0 && (
+          <Segmented
+            label="Show"
+            options={[
+              { value: 1, label: `In ${last}` },
+              { value: 0, label: 'All firms' },
+            ]}
+            value={current ? 1 : 0}
+            onChange={(v) => setCurrent(v === 1)}
+          />
+        )}
+        {indexes.length > 1 && (
+          <Segmented
+            label="Index"
+            value={indexes.includes(index) ? index : 'all'}
+            onChange={setIndex}
+            options={[{ value: 'all', label: 'All' }, ...indexes.map((i) => ({ value: i, label: i }))]}
+          />
+        )}
+        <label className="field">
+          <span>Search</span>
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Company or CEO" />
+        </label>
+      </div>
+      <Async state={state} skeleton={<PanelsSkeleton heights={[250, 1400]} />}>
+        {() => {
+          const q = query.trim().toLowerCase()
+          const rows = shown.filter(
+            (f) => (index === 'all' || !indexes.includes(index) || f.index === index) && (!q || f.name.toLowerCase().includes(q) || !!f.ceo_name?.toLowerCase().includes(q)),
           )
+          if (!rows.length) return <p className="muted">No firms match these filters.</p>
+          const period = current ? String(last) : `latest year, ${first}–${last}`
           return (
-            <Panel
-              title={current ? `Firms in ${last}` : `All firms, ${first}–${last}`}
-              caption={`${rows.length} firms. Board total = all management-board members; CEO = highest-paid full-year CEO.`}
-              controls={
-                <>
-                  <Segmented
-                    label="Show"
-                    options={[
-                      { value: 1, label: `In ${last}` },
-                      { value: 0, label: 'All firms' },
-                    ]}
-                    value={current ? 1 : 0}
-                    onChange={(v) => setCurrent(v === 1)}
-                  />
-                  <label className="field">
-                    <span>Search</span>
-                    <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Company name" />
-                  </label>
-                </>
-              }
-            >
-              <Table
-                caption="Companies"
-                rows={rows}
-                rowKey={(f) => f.id}
-                sort={{ key: 'name', desc: false }}
-                columns={firmColumns}
-              />
-            </Panel>
+            <>
+              <Panel title={`Board total, ${period}`} caption={`${rows.length} firms. Each dot is one firm: the pay of all its management-board members together.`}>
+                <Chart label={`Distribution of board totals across ${rows.length} firms, ${period}`} render={(width) => swarm(rows, width)} />
+              </Panel>
+              <Panel title={current ? `Firms in ${last}` : 'All firms'} caption="Board total = all management-board members; CEO = highest-paid full-year CEO.">
+                <Table caption="Companies" tall rows={rows} rowKey={(f) => f.id} sort={{ key: 'name', desc: false }} columns={firmColumns} />
+              </Panel>
+            </>
           )
         }}
       </Async>
     </>
   )
+}
+
+function swarm(rows: FirmListItem[], width: number) {
+  const data = rows.filter((f) => f.board_total != null) as (FirmListItem & { board_total: number })[]
+  const r = width < 600 ? 3 : 4
+  const max = Math.max(...data.map((d) => d.board_total), 1)
+  const plot = Plot.plot({
+    ...base(width, Math.max(200, swarmHeight(data.map((d) => d.board_total / max), width - 32, r))),
+    marginLeft: 16,
+    x: { ...meurAxis('Board total, € million'), zero: true },
+    y: { axis: null },
+    marks: [
+      Plot.dot(
+        data,
+        Plot.dodgeY('middle', {
+          x: 'board_total',
+          r,
+          fill: 'var(--c-ceo)',
+          fillOpacity: 0.85,
+          tip: true,
+          title: (d) => `${d.name}\n${[d.index, d.last_year].filter(Boolean).join(' · ')}\nBoard ${meur(d.board_total, 2)}${d.ceo_name ? `\nCEO ${d.ceo_name}: ${meur(d.ceo_total, 2)}` : ''}`,
+        }),
+      ),
+    ],
+  })
+  onPick<FirmListItem>(plot, (d) => (location.hash = `#/companies/${d.id}`))
+  return plot
 }
 
 const firmColumns: Column<FirmListItem>[] = [

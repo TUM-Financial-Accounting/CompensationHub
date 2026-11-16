@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { clearCache, send, useApi, type DataColumn, type DataTable, type Finding, type FirmListItem, type RowFindings } from '../api'
+import { clearCache, readDataUrl, send, useApi, type DataColumn, type DataTable, type Draft, type Extracted, type Finding, type FirmListItem, type RowFindings } from '../api'
+import { MAX_UPLOAD, describe, useChat } from '../chat'
 import { X } from '../icons'
 import { useScrollLock } from '../lock'
-import { Async, Skeleton, Table } from '../ui'
+import { Async, Segmented, Skeleton, Table } from '../ui'
+import { Answer } from './Assistant'
 
 type Row = Record<string, string>
 const empty = (t: DataTable): Row => Object.fromEntries(t.columns.map((c) => [c.name, c.name === 'days' ? '365' : '']))
@@ -27,6 +29,8 @@ export function AddDataSheet({ open, onClose }: { open: boolean; onClose: () => 
 
 function Sheet({ close }: { close: () => void }) {
   const tables = useApi<DataTable[]>('/tables')
+  const chat = useChat()
+  const [mode, setMode] = useState<'form' | 'document'>(chat.draft || chat.busy ? 'document' : 'form')
   return (
     <>
       <div className="sheet-head">
@@ -36,9 +40,24 @@ function Sheet({ close }: { close: () => void }) {
         </button>
       </div>
       <div className="sheet-body">
-        <Async state={tables} skeleton={<Skeleton height={400} />}>
-          {(all) => <Editor tables={all} reload={tables.reload} />}
-        </Async>
+        <div className="controls">
+          <Segmented
+            label="How"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'form', label: 'By hand' },
+              { value: 'document', label: 'From a document (AI)' },
+            ]}
+          />
+        </div>
+        {mode === 'form' ? (
+          <Async state={tables} skeleton={<Skeleton height={400} />}>
+            {(all) => <Editor tables={all} reload={tables.reload} />}
+          </Async>
+        ) : (
+          <FromDocument />
+        )}
       </div>
     </>
   )
@@ -177,6 +196,207 @@ function Editor({ tables, reload }: { tables: DataTable[]; reload: () => void })
         </section>
       )}
     </>
+  )
+}
+
+
+/** The assistant reads an attached report or pasted figures and drafts the rows; they are checked, edited and
+ *  saved here. Shares the conversation with the Assistant page. */
+function FromDocument() {
+  const chat = useChat()
+  const [text, setText] = useState('')
+  const [attachment, setAttachment] = useState<Extracted>()
+  const [reading, setReading] = useState<string>()
+  const model = chat.setup?.models.find((m) => m.id === chat.model)
+  const last = chat.turns[chat.turns.length - 1]
+
+  async function attach(f: File) {
+    if (f.size > MAX_UPLOAD) return setReading(`${f.name} is larger than 15 MB.`)
+    setReading(`Reading ${f.name}…`)
+    try {
+      const data = (await readDataUrl(f)).split(',')[1] ?? ''
+      setAttachment(await send<Extracted>('POST', '/extract', { name: f.name, data }))
+      setReading(undefined)
+    } catch (e) {
+      setReading((e as Error).message)
+    }
+  }
+
+  if (!chat.setup) return <Skeleton height={240} />
+  return (
+    <>
+      <p>
+        Attach a remuneration report (PDF or text) or paste the figures. The assistant ({chat.model || 'no model'}) drafts the rows; nothing is saved before you
+        click Save.
+      </p>
+      {!model?.available && <p className="callout">No assistant model is available: add a provider key to backend/.env and restart the backend.</p>}
+      <form
+        className="form-grid"
+        onSubmit={(e) => {
+          e.preventDefault()
+          chat.ask(text, attachment)
+          setText('')
+          setAttachment(undefined)
+        }}
+      >
+        <label className="field wide">
+          <span>Document</span>
+          <input
+            type="file"
+            accept=".pdf,.txt,.md,.csv"
+            disabled={chat.busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) attach(f)
+            }}
+          />
+          {(attachment || reading) && <span className="help">{attachment ? describe(attachment) : reading}</span>}
+        </label>
+        <label className="field wide">
+          <span>{chat.draft ? 'Change the draft' : 'What to add'}</span>
+          <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder={chat.draft ? 'e.g. row 2 is the CFO' : 'e.g. the board members of 2025, or paste the figures here'} />
+        </label>
+        <div className="form-actions wide">
+          {chat.busy ? (
+            <button type="button" className="button" onClick={chat.stop}>
+              Stop
+            </button>
+          ) : (
+            <button type="submit" className="button primary" disabled={!model?.available || (!text.trim() && !attachment)}>
+              {chat.draft ? 'Ask the assistant' : 'Draft the rows'}
+            </button>
+          )}
+        </div>
+      </form>
+      {last?.role === 'assistant' && <Answer t={last} />}
+      {chat.draft && <DraftEditor draft={chat.draft} />}
+      {chat.notice && (
+        <p className="status ok" role="status">
+          {chat.notice}
+        </p>
+      )}
+    </>
+  )
+}
+
+/** The rows the assistant proposed, editable; checked again after each edit, saved on click. */
+function DraftEditor({ draft }: { draft: Draft }) {
+  const chat = useChat()
+  const tables = useApi<DataTable[]>('/tables').data
+  const [checks, setChecks] = useState<{ key: string; value: RowFindings[] }>()
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string>()
+  const key = JSON.stringify(draft.changes)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      send<RowFindings[]>('POST', '/rows/check', { changes: draft.changes }).then(
+        (value) => setChecks({ key, value }),
+        () => undefined,
+      )
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [key, draft.changes])
+
+  const findings = checks?.key === key ? checks.value : draft.checks
+  const edit = (ti: number, ri: number, column: string | null, value?: string) =>
+    chat.setDraft({
+      ...draft,
+      changes: draft.changes.map((c, i) =>
+        i !== ti ? c : { ...c, rows: column === null ? c.rows.filter((_, j) => j !== ri) : c.rows.map((r, j) => (j === ri ? { ...r, [column]: value ?? '' } : r)) },
+      ),
+    })
+
+  async function save() {
+    setSaving(true)
+    setError(undefined)
+    try {
+      const { added } = await send<{ added: number }>('POST', '/rows', { changes: draft.changes })
+      clearCache()
+      chat.setDraft(null)
+      chat.setNotice(`Saved ${added} row${added === 1 ? '' : 's'}; the panel was rebuilt. Peer groups and forecasts update in the background (about three minutes).`)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const blocking = findings.some((f) => f.findings.some((x) => x.level === 'error'))
+  return (
+    <section className="draft" aria-label="Draft rows">
+      <h3>Draft — not saved yet</h3>
+      {draft.changes.map((c, ti) => {
+        const table = tables?.find((t) => t.id === c.table)
+        const used = new Set(c.rows.flatMap((r) => Object.keys(r).filter((k) => r[k] !== '')))
+        const columns = (table?.columns.filter((col) => col.required || used.has(col.name)).map((col) => ({ name: col.name, label: col.label + (col.unit ? ` (${col.unit})` : '') })) ?? [
+          ...used,
+        ].map((name) => ({ name, label: name })))
+        return (
+          <div key={ti} className="subchart">
+            <span className="seg-label">{table?.name ?? c.table}</span>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Field</th>
+                    {c.rows.map((_, ri) => (
+                      <th key={ri}>
+                        Row {ri + 1}{' '}
+                        <button type="button" className="link" onClick={() => edit(ti, ri, null)}>
+                          remove
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {columns.map((col) => (
+                    <tr key={col.name}>
+                      <th scope="row">{col.label}</th>
+                      {c.rows.map((r, ri) => (
+                        <td key={ri}>
+                          <input type="text" aria-label={`${col.label}, row ${ri + 1}`} value={r[col.name] ?? ''} onChange={(e) => edit(ti, ri, col.name, e.target.value)} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <ul className="findings">
+              {findings
+                .filter((f) => f.table === c.table)
+                .flatMap((f) =>
+                  f.findings.map((x, k) => (
+                    <li key={`${f.row}-${k}`} className={x.level}>
+                      <span className="level">{x.level}</span>
+                      <span>
+                        Row {f.row + 1}: {x.message}
+                      </span>
+                    </li>
+                  )),
+                )}
+            </ul>
+          </div>
+        )
+      })}
+      <div className="form-actions">
+        <button type="button" className="button primary" onClick={save} disabled={saving || blocking || !draft.changes.some((c) => c.rows.length)}>
+          {saving ? 'Saving and rebuilding…' : 'Save to the data'}
+        </button>
+        <button type="button" className="button" onClick={() => chat.setDraft(null)} disabled={saving}>
+          Discard
+        </button>
+        <span className="caption">Edit cells here, or ask the assistant to change the draft.</span>
+        {error && (
+          <span className="status bad" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
+    </section>
   )
 }
 
