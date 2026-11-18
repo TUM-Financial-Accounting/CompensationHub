@@ -74,6 +74,9 @@ def load(year: int, path: Path, esg_path: Path | None) -> Batch:
     comp = comp.merge(members[key + MEMBER_COLUMNS], on=key, how="left", validate="one_to_one")
     max_col = next((c for c in comp if c.startswith("Maximalvergütung")), None)
     lt_cols = [c for c in ("mtipi1", "mtipi2", "mtipi3", "ltipi1", "ltipi2") if c in comp]
+    # Cap dummies: 1 = capped, 0 = no cap, blank = not recorded (mostly plans with nothing paid
+    # that year), kept as unknown rather than read as "no cap".
+    sti_cap, lti_cap = num(comp["sticapdummy"]), num(comp["lticapdummy"])
 
     execs = pd.DataFrame({
         "firm": comp["cnameshort"],
@@ -86,9 +89,9 @@ def load(year: int, path: Path, esg_path: Path | None) -> Batch:
         "birth_year": pd.to_datetime(comp["pdob"], errors="coerce").dt.year,
         "days": num(comp["TAGE im AMT"]),
         "internal": comp["Intern/Extern"].where(comp["Intern/Extern"].isin(["Intern", "Extern"])),
-        "sti_cap": num(comp["sticapdummy"]).eq(1),
+        "sti_cap": sti_cap.eq(1).where(sti_cap.notna()),
         "sti_cap_pct": num(comp["sticap"]),
-        "lti_cap": num(comp["lticapdummy"]).eq(1),
+        "lti_cap": lti_cap.eq(1).where(lti_cap.notna()),
         "sti_kpis": comp[["stipi1", "stipi2", "stipi3"]].apply(kpi_names, axis=1),
         "lt_kpis": comp[lt_cols].apply(kpi_names, axis=1),
         "max_comp": num(comp[max_col]) if max_col else np.nan,
@@ -116,6 +119,12 @@ def load(year: int, path: Path, esg_path: Path | None) -> Batch:
     ]
 
     issues = []
+    blank = int(sti_cap.isna().sum() + lti_cap.isna().sum())
+    if blank:
+        issues.append(issue(f"cap-blank-{year}", "note", f"Cap not recorded for some plans ({year})",
+                            "A blank cap dummy is kept as unknown, not read as 'no cap': most "
+                            "blanks belong to a plan with nothing paid that year. Only an explicit "
+                            "0 counts as a plan without a cap.", blank))
     serial = num(comp["pboardentry"]).notna().sum()
     if serial:
         issues.append(issue(f"serial-date-{year}", "fixed",

@@ -132,9 +132,9 @@ export interface Design {
     name: string
     total: number
     pension: number | null
-    sti_cap: boolean
+    sti_cap: boolean | null
     sti_cap_pct: number | null
-    lti_cap: boolean
+    lti_cap: boolean | null
     max_comp: number | null
     sti_esg_share: number | null
     lti_esg_share: number | null
@@ -387,6 +387,35 @@ export interface WhatIf {
   effects: { target: string; feature: string; effect: number }[]
   promotion: { change: number; n: number } | null
 }
+
+// ------------------------------------------------------------------ red flags
+
+export type FlagFamily = 'rule' | 'context' | 'structure'
+/** A rule (law or code) or a statistical detector; `level` 'firm' flags a firm-year (the whole board).
+ *  `checked` / `flagged`: executive-years (firm-years) checked and flagged, all years. */
+export interface FlagDetector { id: string; family: FlagFamily; level: 'executive' | 'firm'; name: string; rule: string; origin: string; checked: number; flagged: number }
+/** An anomaly planted in real executive-years; the first size leaves the data unchanged. */
+export interface FlagKind { id: string; name: string; short: string; idea: string; size_label: string; unit: 'multiple' | 'share'; sizes: number[]; main: number }
+export interface FlagYearCount { detector: string; year: number; checked: number; flagged: number }
+export interface FlagAgreement { a: string; b: string; n: number; both: number; either: number; jaccard: number | null }
+export interface FlagPlanted { detector: string; kind: string; size: number; detected: number }
+export interface FlagAuc { detector: string; kind: string; auc: number }
+export interface FlagOverview {
+  detectors: FlagDetector[]
+  kinds: FlagKind[]
+  by_year: FlagYearCount[]
+  agreement: FlagAgreement[]
+  planted: FlagPlanted[]
+  auc: FlagAuc[]
+  n_common: number
+  flag_share: number
+  years: number[]
+}
+export interface Flag { detector: string; evidence: string }
+/** `checked`: the statistical detectors that could judge this executive-year. */
+export interface FlaggedExec { person_id: string; name: string; firm_id: string; firm: string; year: number; role: Role; total: number; full_year: boolean; flags: Flag[]; checked: string[] }
+export interface FirmFlag { firm_id: string; firm: string; year: number; detector: string; evidence: string }
+export interface FlagList { rows: FlaggedExec[]; firms: FirmFlag[] }
 
 // ------------------------------------------------------------------ data entry
 

@@ -99,6 +99,11 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
   )
 }
 
+/** A series' colour and symbol inline in text or a table cell (decorative: the text beside it names the series). */
+export function Mark({ color, symbol, className }: { color: string; symbol?: string; className?: string }) {
+  return <i className={['swatch', symbol ?? 'box', className].filter(Boolean).join(' ')} style={{ background: color }} aria-hidden="true" />
+}
+
 export function Legend({ items }: { items: { label: string; color: string; shape?: 'box' | 'line' | 'dash' | 'circle' | 'triangle' | 'square' | 'diamond' }[] }) {
   return (
     <div className="legend">

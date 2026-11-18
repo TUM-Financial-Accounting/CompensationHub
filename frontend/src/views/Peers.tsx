@@ -5,7 +5,7 @@ import { useApi, type FirmPeerRow, type Loadable, type PeerCompare, type PeerExe
 import { FAMILY_COLOR, FAMILY_LABEL, REGIME_BREAK, base, labelAxis, meurAxis, methodStyle, narrow, onPick, ratioAxis, ratioPositions, regimeBreak, swarmHeight, verdictZones, yearAxis, yearBar } from '../charts'
 import { ROLE_LABEL, keur, logPct, meur, multiple, pct, spell } from '../format'
 import { X } from '../icons'
-import { Async, Chart, Legend, PageHead, PageSkeleton, Panel, PanelsSkeleton, Segmented, Skeleton, Stat, Table, type Column } from '../ui'
+import { Async, Chart, Legend, Mark, PageHead, PageSkeleton, Panel, PanelsSkeleton, Segmented, Skeleton, Stat, Table, type Column } from '../ui'
 
 // Every number on these pages comes from backend/app/peers.py; see docs/peers.md for the method.
 
@@ -15,7 +15,7 @@ const MANY: Record<Role, string> = { CEO: 'CEOs', CFO: 'CFOs', Member: 'other bo
 
 /** Legend items for the definitions: family colour plus a symbol per definition. */
 function methodLegend(methods: PeerMethod[]) {
-  return methodStyle(methods).style.map((s) => ({ label: s.name, color: s.color, shape: s.symbol }))
+  return methodStyle(methods, FAMILY_COLOR).style.map((s) => ({ label: s.name, color: s.color, shape: s.symbol }))
 }
 
 // ------------------------------------------------------------------ hand-picked comparison
@@ -269,8 +269,8 @@ function Overview({ o }: { o: PeerOverview }) {
 
 /** The definition's colour and symbol, inline in text. */
 export function MethodMark({ methods, id }: { methods: PeerMethod[]; id: string }) {
-  const s = methodStyle(methods).style[methods.findIndex((m) => m.id === id)]
-  return s ? <i className={`swatch ${s.symbol}`} style={{ background: s.color }} aria-hidden="true" /> : null
+  const s = methodStyle(methods, FAMILY_COLOR).style[methods.findIndex((m) => m.id === id)]
+  return s ? <Mark {...s} /> : null
 }
 
 // ------------------------------------------------------------------ scorecard
@@ -339,7 +339,7 @@ function scoreLabel(rows: PeerMethod[], metric: Metric) {
 }
 
 function scoreChart(rows: PeerMethod[], methods: PeerMethod[], metric: Metric, width: number) {
-  const { color, symbol } = methodStyle(methods)
+  const { color, symbol } = methodStyle(methods, FAMILY_COLOR)
   const data = rows.map((m) => ({ ...m, v: metric.value(m), e: metric.error?.(m) ?? 0 }))
   const baseline = data[data.length - 1]
   const names = rows.map((m) => m.name)
@@ -500,7 +500,7 @@ function stripLabel(rows: StripRow[], year: number) {
 }
 
 function stripChart(rows: StripRow[], o: PeerOverview, width: number) {
-  const { color, symbol } = methodStyle(o.methods)
+  const { color, symbol } = methodStyle(o.methods, FAMILY_COLOR)
   const names = new Map(o.methods.map((m) => [m.id, m.name]))
   // Firm names label the rows; a second executive of the same firm (co-CEOs) adds the surname.
   const seen = new Set<string>()
@@ -1144,7 +1144,7 @@ export function CeoPeers({ firmId, firmName }: { firmId: string; firmName: strin
 }
 
 function ceoPeersChart(rows: FirmPeerRow[], o: PeerOverview, width: number) {
-  const { color, symbol } = methodStyle(o.methods)
+  const { color, symbol } = methodStyle(o.methods, FAMILY_COLOR)
   const names = new Map(o.methods.map((m) => [m.id, m.name]))
   const points = rows.map((r) => ({ ...r, ...r.result, method: names.get(r.result.method) ?? r.result.method }))
   const years = points.map((p) => p.year)

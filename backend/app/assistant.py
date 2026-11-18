@@ -398,6 +398,9 @@ Rules
   ask, and suggest {f.peer_method} (best fit on the peer scorecard), or show all six.
 - "Is X overpaid?": give the evidence (peers, forecast range, board), say that the answer
   depends on the reference, do not judge.
+- Red flags: use `api` with /flags/executives and a year, firm or person (ids from `find`);
+  give each flag's evidence and how many detectors raise it, and say that a flag is a reason to
+  look, not a verdict. How the checks work and which anomaly each finds: /flags or `docs`.
 - Find ids with `find` first. Keep answers short: a direct answer, then a few bullet points.
   Answer in the language of the user's question (English if unclear).
 - Use `chart` when a trend or a comparison is easier to see than to read; at most two per
@@ -611,6 +614,7 @@ def examples() -> list[str]:
         f"How has median DAX CEO pay developed since {first}? Compare like with like across the "
         "2021/22 reporting change.",
         f"Is {b['name']} at {b['firm']} paid above peers? Does it depend on the peer definition?",
+        f"Which red flags does {a['firm']} have in {last}, and how many detectors agree?",
         f"What will {c['name']} earn in {last + 2}, and how sure is that?",
         f"What would {cfo['name']} earn as CEO of {cfo['firm']}?",
         "Which model predicts annual bonuses best, and why does the neural network do worse?",

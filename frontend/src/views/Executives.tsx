@@ -7,6 +7,7 @@ import { COMPONENT_COLOR, COMPONENT_LABEL, ROLE_COLOR, ROLE_LABEL, keur, meur } 
 import { Async, Chart, Legend, PageHead, PageSkeleton, Panel, PanelsSkeleton, Segmented, Table, type Column } from '../ui'
 import { execColumns } from './columns'
 import { PersonForecast } from './Prediction'
+import { FlagsPanel } from './RedFlags'
 
 type RoleFilter = Role | 'all'
 
@@ -191,6 +192,7 @@ export function PersonView({ id }: { id: string }) {
               />
             </Panel>
             <PersonForecast id={p.id} />
+            <FlagsPanel query={`person=${encodeURIComponent(p.id)}`} empty={`No red flags for ${p.name} in any year.`} />
             <Panel title="Year by year" caption="Amounts in k€.">
               <Table
                 caption={`${p.name} by year`}

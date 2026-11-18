@@ -2,8 +2,8 @@
 
 Interdisciplinary project (IDP), Chair of Financial Accounting, TUM. One harmonised panel of
 management-board compensation — DAX and MDAX 2006–2021, DAX 40 2022–2024 — with an analytical
-dashboard on top: pay trends, company and executive pages, a peer benchmark, pay prediction, an
-LLM assistant and a form for adding data. What is still open: [`ROADMAP.md`](ROADMAP.md). Data and
+dashboard on top: pay trends, company and executive pages, a peer benchmark, pay prediction, red
+flags, an LLM assistant and a form for adding data. What is still open: [`ROADMAP.md`](ROADMAP.md). Data and
 its issues: [`docs/data.md`](docs/data.md).
 
 ## Run
@@ -17,8 +17,8 @@ cd frontend && npm install && npm run dev                        # dashboard on 
 ```
 
 The first start builds the panel from the Excel/CSV files (~10 s) and caches it in `data/cache/`;
-the peer benchmark (~20 s) and the pay prediction (~2 min) are then computed in the background
-and cached next to it. All rebuild whenever a file in `data/` or the backend code changes, and
+the peer benchmark (~20 s), the pay prediction (~2 min) and the red flags (seconds) are then
+computed in the background and cached next to it. All rebuild whenever a file in `data/` or the backend code changes, and
 after every row saved with **+ Add data**.
 
 The assistant needs an LLM: copy `backend/.env.example` to `backend/.env` and add an OpenAI or
@@ -40,6 +40,7 @@ Commands:
 - Data report: `cd backend && uv run python -m app.panel` lists every source found and every open issue
 - Peer scorecard: `cd backend && uv run python -m app.peers`
 - Prediction scorecard: `cd backend && uv run python -m app.forecast`
+- Red-flag scorecard: `cd backend && uv run python -m app.redflags`
 - Checks: `cd backend && uv run pytest` · `cd frontend && npx tsc -b && npx oxlint src`
 
 New years, firms and datasets are added as files, not code, or row by row with the **+ Add data**
@@ -53,11 +54,12 @@ backend/app/reference.py curated tables: aliases, KPI categories, overrides, att
 backend/app/panel.py     builds the panel: identity, joins, overrides, totals, validation
 backend/app/peers.py     peer benchmark: six peer definitions, statistics, scorecard
 backend/app/forecast.py  pay prediction: fourteen models, seven pay items, backtest, what-if
+backend/app/redflags.py  red flags: four rules, five detectors, planted-anomaly test
 backend/app/entry.py     Add data form: tables, save with rebuild check, plausibility check
 backend/app/assistant.py LLM assistant: providers, tools, loop, number check
 backend/app/main.py      JSON API, one route per dashboard view
 backend/app/schemas.py   response models (mirrored in frontend/src/api.ts)
-backend/tests/           pytest: panel, peers, forecast, entry, assistant
+backend/tests/           pytest: panel, peers, forecast, red flags, entry, assistant
 frontend/src/views/      one file per dashboard view, the Add data dialog and the assistant
 frontend/src/api.ts      response types and data hooks, mirror of schemas.py
 frontend/src/charts.ts   shared chart settings (axes, colours, regime-break marker)
@@ -65,6 +67,7 @@ data/reference/          curated CSVs (in git), incl. NAICS codes per firm; data
 docs/data.md             data study, how the panel is built, how to add data
 docs/peers.md            peer benchmark: definitions, tests, results, references
 docs/prediction.md       pay prediction: models, evaluation, results
+docs/redflags.md         red flags: rules, detectors, planted-anomaly test, results
 docs/assistant.md        assistant and data entry: architecture, tools, configuration, demo questions
 docs/charts.md           how each dashboard chart is computed
 docs/hackathon/          historical, git-ignored: review of the six hackathon projects this builds on
@@ -92,6 +95,8 @@ docs/hackathon/          historical, git-ignored: review of the six hackathon pr
 | `GET /api/people/{id}/prediction?peer_method=` | forecasts of every pay item, board, staff and peer comparison |
 | `GET /api/firms/{id}/prediction` | next year's total pay for each board member |
 | `GET /api/whatif?person_id=&years=&role=&index=&board=&employees=&growth=` | what-if for an executive |
+| `GET /api/flags` | red-flag rules and detectors: flags per year, agreement, planted-anomaly test |
+| `GET /api/flags/executives?year=&firm=&person=` | flagged executive-years with the evidence of each flag, and firm-year flags |
 | `GET /api/tables`, `DELETE /api/tables/{id}/rows/{i}` | tables of the Add data form; delete a hand-entered row |
 | `POST /api/rows`, `POST /api/rows/check` | save rows to one or more tables in one build (all or nothing); check them first (writes are off with `READ_ONLY=1`) |
 | `POST /api/extract` | text of an uploaded PDF or text file, for the assistant |

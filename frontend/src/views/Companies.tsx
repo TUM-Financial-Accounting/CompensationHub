@@ -8,6 +8,7 @@ import { Async, Chart, Legend, PageHead, PageSkeleton, Panel, PanelsSkeleton, Se
 import { execColumns } from './columns'
 import { CeoPeers } from './Peers'
 import { FirmForecastPanel } from './Prediction'
+import { FlagsPanel } from './RedFlags'
 
 export function Companies() {
   const state = useApi<FirmListItem[]>('/firms')
@@ -205,6 +206,7 @@ function CompanyPage({ d }: { d: FirmDetail }) {
       <CeoPeers firmId={d.firm.id} firmName={d.firm.name} />
 
       <FirmForecastPanel id={d.firm.id} />
+      <FlagsPanel query={`firm=${encodeURIComponent(d.firm.id)}`} empty={`No red flags for ${d.firm.name} in any year.`} />
 
       <Panel
         title={`Board members, ${year}`}
@@ -252,7 +254,7 @@ function CompanyPage({ d }: { d: FirmDetail }) {
             <dt>STI cap</dt>
             <dd>{design.sti_cap_pct != null ? `${design.sti_cap_pct.toFixed(0)} % of target` : 'none recorded'}</dd>
             <dt>LTI cap</dt>
-            <dd>{design.lti_cap ? 'yes' : 'none recorded'}</dd>
+            <dd>{design.lti_cap == null ? 'not recorded' : design.lti_cap ? 'yes' : 'no cap'}</dd>
             {(latest.sti_esg_kind || latest.lti_esg_kind) && (
               <>
                 <dt>ESG in pay</dt>

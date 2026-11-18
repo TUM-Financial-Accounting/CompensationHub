@@ -40,6 +40,10 @@
   --c-reference: #009e73;
   --c-level: #e69f00;
   --c-change: #cc79a7;
+  /* red-flag families (rules, context, structure): the peer-family trio, so they follow its dark values */
+  --c-rule: var(--c-industry);
+  --c-context: var(--c-groups);
+  --c-structure: var(--c-neighbours);
 
   --font-body: "Geist", system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, Menlo, monospace;
@@ -250,6 +254,7 @@ main {
 .grid { display: grid; gap: 20px; }
 /* At most two columns, however wide the screen. */
 .grid-2 { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(460px, calc((100% - 20px) / 2))), 1fr)); }
+.grid-3 { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(300px, calc((100% - 40px) / 3))), 1fr)); }
 
 .panel {
   display: grid; align-content: start; gap: 14px; min-width: 0;
@@ -481,7 +486,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .issues { list-style: none; margin: 0; padding: 0; display: grid; }
 .issues li { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--grid); }
 .issues li:first-child { border-top: 0; padding-top: 0; }
-.issues h3 { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.issues h3, .issues h4 { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.issues h4 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
 .issues p { color: var(--muted); font-size: 0.875rem; max-width: 90ch; }
 
 dl.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 0.875rem; }
@@ -501,6 +507,44 @@ dl.facts dd { margin: 0; }
 .views a .card-stats { margin-top: 4px; font: 500 0.72rem/1.4 var(--font-mono); letter-spacing: 0.02em; }
 @media (hover: hover) {
   .views a:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--rule)); background: var(--accent-wash); }
+}
+
+/* ---------------------------------------------------------------- red flags */
+
+.flag-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.flag-list > li { border-top: 1px solid var(--grid); }
+.flag-list > li:first-child { border-top: 0; }
+/* chevron | who (name, firm, rule tags) | detector symbols | pay */
+.flag-list summary {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto minmax(80px, auto); align-items: center; gap: 6px 16px;
+  padding: 10px 4px; cursor: pointer; list-style: none; border-radius: var(--r);
+}
+.flag-list summary::-webkit-details-marker { display: none; }
+.flag-list summary::before {
+  content: ""; width: 14px; height: 14px; background: var(--chevron) center / 14px no-repeat;
+  transform: rotate(-90deg); transition: transform 120ms var(--ease);
+}
+.flag-list details[open] summary::before { transform: none; }
+@media (hover: hover) { .flag-list summary:hover { background: var(--hover); } }
+.flag-who { display: grid; gap: 2px; min-width: 0; }
+.flag-who > span { color: var(--muted); font-size: 0.8125rem; }
+.flag-pay { grid-column: 4; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.875rem; text-align: right; }
+.flag-rules { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.flag-rules .tag { background: var(--warn-wash); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.flag-list .flag-dots { grid-column: 3; }
+.flag-dots { display: inline-flex; align-items: center; gap: 4px; font: 500 0.75rem/1 var(--font-mono); color: var(--muted); white-space: nowrap; }
+.flag-dots .off { opacity: 0.3; }
+.flag-dots .none { visibility: hidden; }
+.flag-name { display: inline-flex; align-items: center; gap: 6px; }
+.flag-evidence { list-style: none; margin: 0 0 12px; padding: 0 0 0 30px; display: grid; gap: 8px; font-size: 0.875rem; }
+.flag-evidence li { display: grid; gap: 2px; }
+.flag-evidence strong { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 600; }
+.flag-evidence span { color: var(--muted); }
+@media (max-width: 560px) {
+  .flag-list summary { grid-template-columns: 14px minmax(0, 1fr) auto; }
+  .flag-pay { grid-row: 1; grid-column: 3; }
+  .flag-list .flag-dots { grid-column: 2 / -1; }
+  .flag-evidence { padding-left: 4px; }
 }
 
 /* ---------------------------------------------------------------- findings */

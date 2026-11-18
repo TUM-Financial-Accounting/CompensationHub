@@ -170,9 +170,9 @@ class CeoDesign(BaseModel):
     name: str
     total: float
     pension: float | None
-    sti_cap: bool
+    sti_cap: bool | None     # None: not recorded
     sti_cap_pct: float | None
-    lti_cap: bool
+    lti_cap: bool | None
     max_comp: float | None
     sti_esg_share: float | None
     lti_esg_share: float | None
@@ -745,6 +745,104 @@ class WhatIf(BaseModel):
     rows: list[WhatIfRow]
     effects: list[WhatIfEffect]
     promotion: Promotion | None
+
+
+# --------------------------------------------------------------------------- red flags
+
+
+class FlagDetector(BaseModel):
+    id: str
+    family: Literal["rule", "context", "structure"]
+    level: Literal["executive", "firm"]  # firm: one flag per firm-year (the whole board)
+    name: str
+    rule: str                # what is flagged, from which threshold
+    origin: str              # legal basis or literature
+    checked: int             # executive-years (firm-years) the check applies to, all years
+    flagged: int
+
+
+class FlagKind(BaseModel):
+    """An anomaly planted in real executive-years to test the detectors."""
+    id: str
+    name: str
+    short: str
+    idea: str
+    size_label: str
+    unit: Literal["multiple", "share"]  # pay × size, or a share of the bonus
+    sizes: list[float]       # the first leaves the data unchanged
+    main: float              # size at which the AUC is reported
+
+
+class FlagYearCount(BaseModel):
+    detector: str
+    year: int
+    checked: int
+    flagged: int
+
+
+class FlagAgreement(BaseModel):
+    a: str
+    b: str
+    n: int                   # executive-years both check
+    both: int                # … flagged by both
+    either: int              # … flagged by at least one
+    jaccard: float | None    # both ÷ either
+
+
+class FlagPlanted(BaseModel):
+    detector: str
+    kind: str
+    size: float
+    detected: float          # share of the planted executive-years the detector flags
+
+
+class FlagAuc(BaseModel):
+    detector: str
+    kind: str
+    auc: float               # chance that a planted row scores above a real one (0.5 = blind)
+
+
+class FlagOverview(BaseModel):
+    detectors: list[FlagDetector]
+    kinds: list[FlagKind]
+    by_year: list[FlagYearCount]
+    agreement: list[FlagAgreement]
+    planted: list[FlagPlanted]
+    auc: list[FlagAuc]
+    n_common: int            # executive-years every statistical detector checks (planted test)
+    flag_share: float        # model-based detectors flag this share of their regime
+    years: list[int]
+
+
+class Flag(BaseModel):
+    detector: str
+    evidence: str
+
+
+class FlaggedExec(BaseModel):
+    person_id: str
+    name: str
+    firm_id: str
+    firm: str
+    year: int
+    role: str
+    total: float
+    full_year: bool
+    flags: list[Flag]
+    checked: list[str]       # statistical detectors that could judge this executive-year
+
+
+class FirmFlag(BaseModel):
+    firm_id: str
+    firm: str
+    year: int
+    detector: str
+    evidence: str
+
+
+class FlagList(BaseModel):
+    rows: list[FlaggedExec]
+    firms: list[FirmFlag]
 
 
 # --------------------------------------------------------------------------- data entry

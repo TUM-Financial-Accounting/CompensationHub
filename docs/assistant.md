@@ -180,3 +180,8 @@ generated from the current data instead (`examples()` in `assistant.py`).
 24. Why can't you compare 2021 and 2022 directly?
 25. What will the average DAX CEO earn in 2040? *(expected: refuses beyond the tested horizon and says why)*
 26. Is Christian Klein overpaid? *(expected: gives the peer and model evidence, states that "overpaid" depends on the reference, does not judge)*
+
+**Red flags**
+
+27. Which red flags does adidas have in 2024, and how many detectors agree on each?
+28. Which detector would notice a CEO who is paid twice the usual amount every year, and which would miss it?

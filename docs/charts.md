@@ -138,6 +138,33 @@ year + market drift" on the same executive-years. Everything is scored per discl
 - **Board pay forecast (company page).** Next year's total pay of each current full-year board
   member: forecast median and 80 % range, with last year's pay as a tick.
 
+## Red flags
+
+How the rules and detectors work and how they are tested: [`redflags.md`](redflags.md). Colour
+marks the family (rules, pay against a reference, pay package as a whole), the symbol the check
+within it.
+
+- **Headline.** For the chosen year: executives with at least one rule flag, plus the firm-year
+  flags; executives flagged by at least half of the statistical detectors that could judge them.
+  Then, from the planted-anomaly test, the best detector for a one-year doubling of pay and for a
+  bonus paid as fixed salary.
+- **Flagged executive-years.** Every executive-year of the chosen year with a flag. *Rules or
+  most detectors* (the default) keeps those with a rule flag or flagged by at least half of the
+  detectors that could judge them. Each row shows the rule flags as tags and one symbol per
+  detector: solid = flagged, faint = checked and not flagged, missing = could not judge. Opening
+  a row lists every flag with its evidence; the package detectors share one line when they flag
+  for the same reason. Firm-year flags (no individual disclosure) are a table above the rows.
+- **Which detector finds which anomaly.** Share of planted executive-years each detector flags,
+  by the size of the anomaly, one chart per kind. The first point is the real data (false-alarm
+  rate). The table gives that rate and the AUC per kind.
+- **Flags per year.** One cell per check and year: the share flagged of the executive-years (or
+  firm-years) the check could judge, shading on a square-root scale of the highest share; the
+  number is the count.
+- **Do the checks flag the same executives?** Jaccard overlap of the flags of two checks on the
+  executive-years both judge.
+- **Red flags (company and executive pages).** The same rows and firm-year flags for one firm or
+  one person, every year.
+
 ## Pay design (2022–2024, DAX)
 
 - **Capped bonus / capped LTI.** Share of DAX CEOs whose plan has a cap, from the yes/no cap

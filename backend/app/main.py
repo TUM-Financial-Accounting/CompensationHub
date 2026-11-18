@@ -32,6 +32,7 @@ from .forecast import BAND, HORIZONS, MODEL_IDS, MODELS, TARGETS, get_forecasts,
 from .panel import COMPONENTS, ROOT, Panel, get_panel
 from .peers import (BASELINE, HIGH, METHOD_IDS, METHODS, MIN_PAY, MIN_PEER_FIRMS, Benchmarks,
                     Method, fragility, get_benchmarks, group_peers, peer_stats)
+from .redflags import DETECTORS, FLAG_SHARE, KINDS, MAIN_SIZE, PLANTS, STAT_IDS, get_flags
 
 Scope = Literal["dax", "all"]
 Role = Literal["CEO", "CFO", "Member"]
@@ -40,7 +41,7 @@ Role = Literal["CEO", "CFO", "Member"]
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     get_panel()  # build (or load the cached) panel before the first request
-    threading.Thread(target=get_forecasts, daemon=True).start()  # peers and forecasts
+    threading.Thread(target=lambda: (get_forecasts(), get_flags()), daemon=True).start()
     yield
 
 
@@ -629,6 +630,59 @@ def whatif(person_id: str, years: int = 1, role: Role | None = None,
     if out is None:
         raise HTTPException(404, f"'{person_id}' is not a full-year executive of the latest year")
     return out
+
+
+# --------------------------------------------------------------------------- red flags
+# Computed in redflags.py; these routes only select and shape. Methodology: docs/redflags.md.
+
+
+@app.get("/api/flags", response_model=s.FlagOverview)
+def flag_overview():
+    """Red flags: every rule and statistical detector with how often it fires each year, how
+    often two of them flag the same executive-years (Jaccard), and which planted anomalies each
+    finds (detected = share of planted executive-years flagged; size 1, or 0 for 'structure',
+    is the real data, so it is the false-alarm rate)."""
+    fl = get_flags()
+    per = fl.by_year.groupby("detector")[["checked", "flagged"]].sum()
+    return {
+        "detectors": [{**asdict(d), "checked": int(per.at[d.id, "checked"]),
+                       "flagged": int(per.at[d.id, "flagged"])} for d in DETECTORS],
+        "kinds": [{**asdict(k), "sizes": list(PLANTS[k.id]), "main": MAIN_SIZE[k.id]} for k in KINDS],
+        "by_year": records(fl.by_year),
+        "agreement": records(fl.agreement),
+        "planted": records(fl.planted),
+        "auc": records(fl.auc),
+        "n_common": fl.n_common,
+        "flag_share": FLAG_SHARE,
+        "years": sorted(fl.rows["year"].unique().tolist()),
+    }
+
+
+@app.get("/api/flags/executives", response_model=s.FlagList)
+def flag_list(year: int | None = None, firm: str | None = None, person: str | None = None):
+    """Executive-years with at least one red flag, each flag with its evidence sentence, for a
+    `year`, a firm id (`firm`) and/or a person id (`person`); `checked` names the statistical
+    detectors that could judge the executive-year. `firms` holds the firm-year flags (no
+    individual disclosure) of the same year or firm."""
+    if year is None and firm is None and person is None:
+        raise HTTPException(422, "Give a year, a firm or a person.")
+    fl = get_flags()
+    r, ff = fl.rows, fl.firm_flags
+    keep = pd.Series(True, index=r.index)
+    for col, value in (("year", year), ("firm_id", firm), ("person_id", person)):
+        if value is not None:
+            keep &= r[col] == value
+            ff = ff[ff[col] == value] if col in ff else ff.merge(r.loc[keep, ["firm_id", "year"]])
+    if not keep.any() and ff.empty:
+        raise HTTPException(404, "No executive-years for this year, firm or person.")
+    c = fl.checks[fl.checks["row"].isin(r.index[keep])]
+    flags = {row: records(g[["detector", "evidence"]]) for row, g in c[c["flagged"]].groupby("row")}
+    checked = c[c["detector"].isin(STAT_IDS)].groupby("row")["detector"].agg(list)
+    rows = r.loc[sorted(flags), ["person_id", "name", "firm_id", "firm", "year", "role", "total",
+                                 "full_year"]]
+    return {"rows": [{**x, "flags": flags[row], "checked": checked.get(row, [])}
+                     for row, x in zip(rows.index, records(rows))],
+            "firms": records(ff[["firm_id", "firm", "year", "detector", "evidence"]])}
 
 
 # --------------------------------------------------------------------------- data entry

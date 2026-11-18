@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { useApi, type PeerOverview, type PredictionOverview } from './api'
 import { MODEL_FAMILY_COLOR } from './charts'
 import { ChatProvider } from './ChatProvider'
-import { BarChart, Briefcase, Building2, Home, LineChart, Menu, MessageSquare, MessagesSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, Users, X } from './icons'
+import { BarChart, Briefcase, Building2, Flag, Home, LineChart, Menu, MessageSquare, MessagesSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, Users, X } from './icons'
 import { useScrollLock } from './lock'
 import { useTheme, type Theme } from './theme'
 import { ErrorBoundary, Segmented } from './ui'
@@ -19,6 +19,7 @@ import { Overview } from './views/Overview'
 import { MethodMark, PeerMethodPage, PeersView } from './views/Peers'
 import { PredictionModelPage, PredictionView } from './views/Prediction'
 import { QualityView } from './views/Quality'
+import { FlagsView } from './views/RedFlags'
 
 const NAV = [
   ['', 'Overview', Home],
@@ -27,6 +28,7 @@ const NAV = [
   ['executives', 'Executives', Users],
   ['peers', 'Peer benchmark', Scale],
   ['prediction', 'Pay prediction', LineChart],
+  ['flags', 'Red flags', Flag],
   ['design', 'Pay design', SlidersHorizontal],
   ['board', 'Board & workforce', Briefcase],
   ['data', 'Data quality', ShieldCheck],
@@ -60,6 +62,8 @@ function page([section, id]: string[]) {
       return id ? <PeerMethodPage id={id} /> : <PeersView />
     case 'prediction':
       return id ? <PredictionModelPage key={id} id={id} /> : <PredictionView />
+    case 'flags':
+      return <FlagsView />
     case 'assistant':
       return <AssistantView />
     case 'design':

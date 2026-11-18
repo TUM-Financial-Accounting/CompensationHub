@@ -156,7 +156,8 @@ Sources: [Armeli & Fligge (2026), Mitbestimmungsreport 89](https://www.imu-boeck
 - **Metro** stays as delivered: pre-2017 rows follow the management team to the new METRO AG,
   and the old Metro AG continues as Ceconomy. Documented, not changed.
 - **KPI categories** reviewed for all 255 names (see [KPI categories](#kpi-categories)).
-- Handled in code: 4 Rhön-Klinikum 2013 rows without person ID dropped; one Excel serial date;
+- Handled in code: blank DSW cap fields kept as "not recorded" (only an explicit 0 means no
+  cap); 4 Rhön-Klinikum 2013 rows without person ID dropped; one Excel serial date;
   2022 activity text in the wrong column; CEO vs. division-CEO titles; line breaks in KPI names;
   a space inside IKB's ISIN and after "Bilfinger".
 
@@ -173,8 +174,20 @@ Sources: [Armeli & Fligge (2026), Mitbestimmungsreport 89](https://www.imu-boeck
    weight. Still empty: plans with two multipliers (Allianz LTI 2023–24, Mercedes-Benz STI
    2023–24, Heidelberg Materials STI 2023). Settle them with `overrides.csv` rows.
 3. **Index listing missing** for 117 legacy firm-years: 56 are a firm's first year in the panel,
-   1 its last, 60 a gap in the middle (e.g. Deutz 2009–10 between MDAX years). Likely the firm
-   was in neither DAX nor MDAX that year (e.g. dropped to SDAX); not verified.
+   1 its last, 60 a gap in the middle. The firm was most likely in neither DAX nor MDAX that
+   year, for one of three reasons. The years point to these reasons, but none is verified:
+   - **TecDAX firms before the 2018 index reform** (17 firms in 2017, the worst year: Bechtle,
+     Carl Zeiss Meditec, Freenet, Nemetschek, Qiagen, Sartorius, Software AG and others). These
+     joined the MDAX in September 2018, when TecDAX firms became eligible.
+   - **Years before or around the IPO:** Evonik 2010–11, KION 2011–13, Vonovia 2011–13,
+     Talanx 2009–11, LEG 2012, Zalando 2013–14, Knorr-Bremse 2018.
+   - **Spells outside the MDAX**, probably in the SDAX: Deutz 2009–10, Gerry Weber 2006–10,
+     Bertrandt 2011–13, Dürr 2008–11 and others.
+
+   The peer definitions that use the index treat "none" as one more index
+   ([`peers.md`](peers.md#the-six-definitions)), so firms that were not listed yet are compared
+   with SDAX and TecDAX firms. Leave them out of the red flags, or fill in the real listing with rows in
+   `overrides.csv`.
 
 ### Worth knowing
 

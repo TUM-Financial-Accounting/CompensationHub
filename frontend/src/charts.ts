@@ -1,6 +1,6 @@
 import * as Plot from '@observablehq/plot'
 
-import { COMPONENTS, type ModelFamily, type PeerFamily } from './api'
+import { COMPONENTS, type FlagFamily, type ModelFamily, type PeerFamily } from './api'
 import { COMPONENT_COLOR, COMPONENT_LABEL, ROLE_COLOR, ROLE_LABEL } from './format'
 
 /** Phone-sized chart: ~320 px of room, so axes thin out and labels are shortened. */
@@ -104,12 +104,12 @@ export const FAMILY_LABEL: Record<PeerFamily, string> = {
  *  and the symbol the definition within it (first circle, second triangle, …). */
 const SYMBOLS = ['circle', 'triangle', 'square', 'diamond'] as const
 
-export function methodStyle(methods: { name: string; family: PeerFamily }[]) {
-  const seen = new Map<PeerFamily, number>()
+export function methodStyle<F extends string>(methods: { name: string; family: F }[], colors: Record<F, string>) {
+  const seen = new Map<F, number>()
   const style = methods.map((m) => {
     const n = seen.get(m.family) ?? 0
     seen.set(m.family, n + 1)
-    return { name: m.name, color: FAMILY_COLOR[m.family], symbol: SYMBOLS[n % SYMBOLS.length] }
+    return { name: m.name, color: colors[m.family], symbol: SYMBOLS[n % SYMBOLS.length] }
   })
   return {
     style,
@@ -172,4 +172,18 @@ export const MODEL_FAMILY_LABEL: Record<ModelFamily, string> = {
   reference: 'Comparable executives',
   level: 'Expected pay',
   change: 'Change models',
+}
+
+// ------------------------------------------------------------------ red flags
+
+/** Rules, context detectors and structure detectors: the validated trio of the peer families. */
+export const FLAG_FAMILY_COLOR: Record<FlagFamily, string> = {
+  rule: 'var(--c-rule)',
+  context: 'var(--c-context)',
+  structure: 'var(--c-structure)',
+}
+export const FLAG_FAMILY_LABEL: Record<FlagFamily, string> = {
+  rule: 'Rules (law and code)',
+  context: 'Pay against a reference',
+  structure: 'Pay package as a whole',
 }

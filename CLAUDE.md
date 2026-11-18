@@ -19,6 +19,10 @@ scorecards and checks), `docs/data.md` before touching data logic, `ROADMAP.md` 
   target year is ≤ the origin it predicts from, never across the 2021/22 break; a new model is
   one function in `FITS` plus a `Model` entry. Gender and nationality never enter a prediction
   shown to users.
+- **Red flags** (`redflags.py`, `docs/redflags.md`): every flag carries an evidence sentence;
+  thresholds are named constants; model-based detectors are cross-fitted by firm, fitted within
+  one disclosure regime and flag `FLAG_SHARE` of it. A new detector is a score passed to
+  `checks_of` plus a `Detector` entry (and a line in `variant` for the planted test).
 - **Assistant** (`assistant.py`, `docs/assistant.md`): the LLM picks tools, Python computes;
   every new GET route is reachable through the `api` tool, so keep route docstrings meaningful.
   Writes go only through the Add data routes (`entry.py`), which rebuild the panel before keeping a row.

@@ -240,9 +240,10 @@ def refresh() -> None:
     panel.get_panel.cache_clear()
     peers.get_benchmarks.cache_clear()
     forecast._forecasts.cache_clear()
-    from . import assistant
+    from . import assistant, redflags
+    redflags._flags.cache_clear()
     assistant.database.cache_clear()
-    threading.Thread(target=forecast.get_forecasts, daemon=True).start()
+    threading.Thread(target=redflags.get_flags, daemon=True).start()  # forecasts, then flags
 
 
 def extract_text(name: str, data: bytes) -> dict:
