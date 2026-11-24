@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 
-import { useApi, type PeerOverview, type PredictionOverview } from './api'
+import { useApi, type PeerOverview, type PredictionOverview, type Session, type User } from './api'
 import { MODEL_FAMILY_COLOR } from './charts'
 import { ChatProvider } from './ChatProvider'
-import { BarChart, Briefcase, Building2, Flag, Home, LineChart, Menu, MessageSquare, MessagesSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, Users, X } from './icons'
+import { BarChart, Briefcase, Building2, Flag, Home, LineChart, LogOut, Menu, MessageSquare, MessagesSquare, Monitor, Moon, Plus, Scale, ShieldCheck, SlidersHorizontal, Sun, UserPlus, Users, X } from './icons'
 import { useScrollLock } from './lock'
 import { useTheme, type Theme } from './theme'
 import { ErrorBoundary, Segmented } from './ui'
 
+import { AccountsView } from './views/Accounts'
 import { AddDataSheet } from './views/AddData'
 import { AssistantPanel, AssistantView } from './views/Assistant'
 import { Board } from './views/Board'
@@ -20,6 +21,7 @@ import { MethodMark, PeerMethodPage, PeersView } from './views/Peers'
 import { PredictionModelPage, PredictionView } from './views/Prediction'
 import { QualityView } from './views/Quality'
 import { FlagsView } from './views/RedFlags'
+import { SignIn } from './views/SignIn'
 
 const NAV = [
   ['', 'Overview', Home],
@@ -34,6 +36,7 @@ const NAV = [
   ['data', 'Data quality', ShieldCheck],
   ['feedback', 'Feedback', MessagesSquare],
 ] as const
+const ADMIN_NAV = [...NAV, ['accounts', 'Accounts', UserPlus] as const] // who can sign in: admins, with sign-in on
 
 /** Hash routes keep every view deep-linkable without a router dependency: #/companies/sap */
 function useRoute(): string[] {
@@ -74,6 +77,8 @@ function page([section, id]: string[]) {
       return <QualityView />
     case 'feedback':
       return <FeedbackView />
+    case 'accounts':
+      return <AccountsView />
     default:
       return <p>Page not found. <a href="#/">Back to the overview</a>.</p>
   }
@@ -143,6 +148,9 @@ interface SidebarProps {
   sections: PageSection[]
   subViews: Record<string, SubView[] | undefined>
   onAdd: () => void
+  /** The signed-in user; null when sign-in is off (everyone is the local admin). */
+  account: User | null
+  admin: boolean
   theme: Theme
   onTheme: (t: Theme) => void
   /** Set when rendered in the drawer: called before a link or button inside it acts. */
@@ -164,7 +172,29 @@ function ThemeSwitch({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) => 
   )
 }
 
-function SidebarContent({ route, active, sections, subViews, onAdd, theme, onTheme, onClose }: SidebarProps) {
+function Account({ user }: { user: User }) {
+  return (
+    <div className="account">
+      <span className="avatar" aria-hidden="true">
+        {user.name.slice(0, 1).toUpperCase()}
+      </span>
+      <span className="account-text">
+        <span className="account-name">
+          {user.name}
+          {user.admin && <span className="badge">Admin</span>}
+        </span>
+        <span className="account-email">{user.email}</span>
+      </span>
+      <form method="post" action="/api/auth/logout">
+        <button type="submit" className="icon-button" aria-label="Sign out" title="Sign out">
+          <LogOut />
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function SidebarContent({ route, active, sections, subViews, onAdd, account, admin, theme, onTheme, onClose }: SidebarProps) {
   return (
     <div className="side">
       <div className="brand">
@@ -185,7 +215,7 @@ function SidebarContent({ route, active, sections, subViews, onAdd, theme, onThe
       </div>
       <nav aria-label="Views">
         <ul className="tree">
-          {NAV.map(([path, label, Icon]) => {
+          {(account?.admin ? ADMIN_NAV : NAV).map(([path, label, Icon]) => {
             const sub = active === path ? subViews[path] : undefined
             const child = path in subViews && route[1]
             return (
@@ -211,16 +241,18 @@ function SidebarContent({ route, active, sections, subViews, onAdd, theme, onThe
           })}
         </ul>
       </nav>
-      <button
-        type="button"
-        className="button add-data"
-        onClick={() => {
-          onClose?.()
-          onAdd()
-        }}
-      >
-        <Plus /> Add data
-      </button>
+      {admin && (
+        <button
+          type="button"
+          className="button add-data"
+          onClick={() => {
+            onClose?.()
+            onAdd()
+          }}
+        >
+          <Plus /> Add data
+        </button>
+      )}
       <ThemeSwitch theme={theme} onTheme={onTheme} />
       {sections.length > 1 && (
         <nav aria-label="On this page" className="toc">
@@ -242,11 +274,22 @@ function SidebarContent({ route, active, sections, subViews, onAdd, theme, onThe
           </ul>
         </nav>
       )}
+      {account && <Account user={account} />}
     </div>
   )
 }
 
+/** Signed out, or opening a link from an admin (?invite=…), the sign-in page; the dashboard and
+ *  its data requests start only after sign-in. */
 export default function App() {
+  const session = useApi<Session>('/auth/me')
+  if (session.error) return <SignIn problem={session.error} />
+  if (!session.data) return null
+  if (!session.data.user || (session.data.login && location.search.includes('invite='))) return <SignIn />
+  return <Dashboard user={session.data.user} login={session.data.login} />
+}
+
+function Dashboard({ user, login }: { user: User; login: boolean }) {
   const route = useRoute()
   const main = useRef<HTMLElement>(null)
   const drawer = useRef<HTMLDialogElement>(null)
@@ -260,8 +303,8 @@ export default function App() {
 
   const closeMenu = () => drawer.current?.close()
   const active = route[0] === 'people' ? 'executives' : route[0] === 'trends' ? '' : (route[0] ?? '')
-  const sidebar = { route, active, sections, subViews, onAdd: () => setAdding(true), theme, onTheme: setTheme }
-  const label = NAV.find(([path]) => path === active)?.[1] ?? 'DAX Executive Pay'
+  const sidebar = { route, active, sections, subViews, onAdd: () => setAdding(true), account: login ? user : null, admin: user.admin, theme, onTheme: setTheme }
+  const label = ADMIN_NAV.find(([path]) => path === active)?.[1] ?? 'DAX Executive Pay'
 
   // New page: start at the top and move focus to its heading for keyboard and screen-reader users.
   const previous = useRef(key)
@@ -320,7 +363,7 @@ export default function App() {
           <ErrorBoundary>{page(route)}</ErrorBoundary>
         </main>
         <AssistantPanel hidden={route[0] === 'assistant'} />
-        <AddDataSheet open={adding} onClose={() => setAdding(false)} />
+        {user.admin && <AddDataSheet open={adding} onClose={() => setAdding(false)} />}
       </div>
     </ChatProvider>
   )

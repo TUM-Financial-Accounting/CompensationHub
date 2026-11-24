@@ -1,6 +1,7 @@
 """HTTP API over the harmonised panel: one read route per dashboard view, plus the Add data form
-(the only routes that write the panel, disabled when READ_ONLY is set), feedback posts (kept in
-Postgres at DATABASE_URL) and the assistant.
+(the only routes that write the panel: admins only, and off when READ_ONLY is set), feedback posts
+(kept in Postgres at DATABASE_URL) and the assistant. Every /api route needs a signed-in user
+(auth.py: email and password, by invitation) except sign-in itself and the health check.
 
 Pay statistics use full-year executives (≥ 360 days in office) so that joiners, leavers and
 CEO hand-overs do not drag medians down. `scope=dax` restricts to DAX firm-years, the only
@@ -11,8 +12,6 @@ import base64
 import json
 import os
 import threading
-import time
-from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Literal
@@ -22,11 +21,11 @@ import pandas as pd
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 
-from . import assistant, entry, reference
+from . import assistant, auth, entry, reference
 from . import schemas as s
 from .forecast import BAND, HORIZONS, MODEL_IDS, MODELS, TARGETS, get_forecasts, what_if
 from .panel import COMPONENTS, ROOT, Panel, get_panel
@@ -40,12 +39,31 @@ Role = Literal["CEO", "CFO", "Member"]
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    auth.start()  # accounts table, admins' accounts
+    entry.replay()  # rows entered on the hosted copy, kept in Postgres across deploys
     get_panel()  # build (or load the cached) panel before the first request
     threading.Thread(target=lambda: (get_forecasts(), get_flags()), daemon=True).start()
     yield
 
 
 app = FastAPI(title="DAX executive compensation panel", lifespan=lifespan)
+app.include_router(auth.router)
+OPEN = ("/api/auth/", "/api/health")
+
+
+@app.middleware("http")
+async def signed_in(request: Request, call_next):
+    """The panel is confidential: every API route needs a signed-in user."""
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith(OPEN) and auth.user(request) is None:
+        return JSONResponse({"detail": "Sign in first."}, 401)
+    return await call_next(request)
+
+
+@app.get("/api/health", include_in_schema=False)
+def health():
+    """Railway's health check: the server answers once the panel is built (lifespan)."""
+    return {"ok": True}
 
 
 def records(df: pd.DataFrame) -> list[dict]:
@@ -689,7 +707,7 @@ def flag_list(year: int | None = None, firm: str | None = None, person: str | No
 
 
 def writable() -> None:
-    if os.getenv("READ_ONLY", "").strip().lower() not in ("", "0", "false", "no"):
+    if auth.flag("READ_ONLY"):
         raise HTTPException(403, "This dashboard is read-only (READ_ONLY is set).")
 
 
@@ -711,13 +729,13 @@ def changes_of(body: s.Changes) -> list[tuple[entry.Table, list[dict]]]:
 
 
 @app.post("/api/rows", response_model=s.Saved)
-def add_rows(body: s.Changes):
+def add_rows(body: s.Changes, user: dict = Depends(auth.admin)):
     """Append rows to one or more tables (the Add data form, or a draft the assistant proposed
-    and the user confirmed). One panel build checks them all; on failure nothing is kept."""
+    and an admin confirmed). One panel build checks them all; on failure nothing is kept."""
     writable()
     changes = changes_of(body)
     try:
-        return {"added": entry.add(changes)}
+        return {"added": entry.add(changes, user["email"])}
     except Exception as e:  # validation or the panel build: the files are already restored
         raise HTTPException(422, str(e)) from e
 
@@ -739,11 +757,11 @@ def extract(body: s.Document):
 
 
 @app.delete("/api/tables/{table_id}/rows/{index}", response_model=s.DataTable)
-def delete_row(table_id: str, index: int):
+def delete_row(table_id: str, index: int, user: dict = Depends(auth.admin)):
     writable()
     t = data_table(table_id)
     try:
-        entry.delete(t, index)
+        entry.delete(t, index, user["email"])
     except Exception as e:
         raise HTTPException(422, str(e)) from e
     return entry.describe(t)
@@ -758,6 +776,7 @@ FEEDBACK_TABLE = """CREATE TABLE IF NOT EXISTS feedback (
     created timestamptz NOT NULL DEFAULT now());
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS reply_to int REFERENCES feedback ON DELETE CASCADE;
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS done boolean NOT NULL DEFAULT false;
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS email text NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS feedback_photo (
     id serial PRIMARY KEY,
     post int NOT NULL REFERENCES feedback ON DELETE CASCADE,
@@ -796,28 +815,37 @@ def feedback_photo(photo_id: int):
         raise HTTPException(404, "No such photo.")
     # The type is one of the image types NewFeedback allows; nosniff keeps browsers to it.
     return Response(row["data"], media_type=row["type"], headers={
-        "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=31536000, immutable"})
+        "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=31536000, immutable"})
+
+
+FEEDBACK_PER_DAY = 5  # posts and replies per user in 24 hours; admins have no limit
 
 
 @app.post("/api/feedback", response_model=s.FeedbackPost)
-def post_feedback(body: s.NewFeedback):
-    """Save a feedback post or a reply, with its photos. Open to every visitor, also with READ_ONLY set."""
-    # ponytail: no login or rate limit; delete spam in the database, add both if it gets abused
+def post_feedback(body: s.NewFeedback, request: Request):
+    """Save a feedback post or a reply, with its photos, under the signed-in user's name. Also
+    with READ_ONLY set."""
+    user = auth.user(request)
     with feedback_db() as db:
+        if not user["admin"]:  # ponytail: two posts at the same moment can both pass the count
+            n = db.execute("SELECT count(*) AS n FROM feedback WHERE email = %s AND created > now() - interval '1 day'",
+                           (user["email"],)).fetchone()["n"]
+            if n >= FEEDBACK_PER_DAY:
+                raise HTTPException(429, f"At most {FEEDBACK_PER_DAY} posts a day: try again tomorrow.")
         if body.reply_to is not None:
             parent = db.execute("SELECT reply_to FROM feedback WHERE id = %s", (body.reply_to,)).fetchone()
             if parent is None or parent["reply_to"] is not None:
                 raise HTTPException(422, "Replies go to an existing post, not to another reply.")
-        post = db.execute("INSERT INTO feedback (author, body, reply_to) VALUES (%s, %s, %s) RETURNING *",
-                          (body.author, body.body, body.reply_to)).fetchone()
+        post = db.execute("INSERT INTO feedback (author, email, body, reply_to) VALUES (%s, %s, %s, %s) RETURNING *",
+                          (user["name"], user["email"], body.body, body.reply_to)).fetchone()
         post["photos"] = [db.execute("INSERT INTO feedback_photo (post, type, data) VALUES (%s, %s, %s) RETURNING id",
                                      (post["id"], p.type, p.data)).fetchone()["id"] for p in body.photos]
         return post
 
 
-@app.post("/api/feedback/{post_id}/done", response_model=s.FeedbackPost)
+@app.post("/api/feedback/{post_id}/done", response_model=s.FeedbackPost, dependencies=[Depends(auth.admin)])
 def mark_feedback(post_id: int, body: s.FeedbackDone):
-    """Mark a feedback post as done, or as open again. Open to every visitor, like posting."""
+    """Mark a feedback post as done, or as open again (admins)."""
     with feedback_db() as db:
         post = db.execute("UPDATE feedback SET done = %s WHERE id = %s AND reply_to IS NULL RETURNING *",
                           (body.done, post_id)).fetchone()
@@ -830,29 +858,13 @@ def mark_feedback(post_id: int, body: s.FeedbackDone):
 
 # --------------------------------------------------------------------------- assistant
 
-CHAT_PER_MINUTE = 20     # questions per visitor: the LLM key is paid per call
-_asked: dict[str, deque] = defaultdict(deque)
-
-
-def chat_budget(request: Request) -> None:
-    # ponytail: in-memory and keyed by a header a client can forge; put a login or a proxy
-    # limit in front if the hosted key gets abused
-    who = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")
-           ).split(",")[0].strip()
-    now, asked = time.monotonic(), _asked[who]
-    while asked and now - asked[0] > 60:
-        asked.popleft()
-    if len(asked) >= CHAT_PER_MINUTE:
-        raise HTTPException(429, f"More than {CHAT_PER_MINUTE} questions a minute: wait a moment.")
-    asked.append(now)
-
 
 @app.get("/api/chat/models", response_model=s.ChatSetup)
 def chat_models():
     return {"models": assistant.models(), "examples": assistant.examples()}
 
 
-@app.post("/api/chat", dependencies=[Depends(chat_budget)])
+@app.post("/api/chat")
 def chat(body: s.ChatRequest):
     """Streams the assistant's work as JSON lines: tool calls, their results, the answer."""
     draft = [c.model_dump() for c in body.draft] if body.draft else None

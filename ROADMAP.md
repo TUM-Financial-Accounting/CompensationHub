@@ -33,9 +33,13 @@ only what is open.
 - Hackathon credits: `docs/hackathon/` is now git-ignored, but `docs/peers.md` ("What was taken
   from the six hackathon projects") and the `Method` descriptions in `backend/app/peers.py` still
   name those projects. Decide whether to keep them as credits or reword them.
-- Feedback page, before it is opened wider: no login or rate limit on posting, the assistant's
-  rate limit trusts a header a client can set, and only the newest 500 posts are listed
-  (`ponytail:` notes in `backend/app/main.py`).
+- Sign-in: anyone who finds the address can register, see the panel and use the assistant
+  without a limit, and registering checks no email address. Before the link goes wider, decide
+  on an email domain (e.g. only `@tum.de`), a per-user chat limit, and a limit on registrations.
+  People cannot change their own password (an admin makes a password link). TUM login
+  (`login.tum.de`, OpenID Connect) would check addresses but needs TUM IT to register the app
+  (it-support@tum.de).
+- Feedback lists only the newest 500 posts (`ponytail:` note in `backend/app/main.py`).
 - Optional: collect the DCGK G.3 peer groups the DAX 40 disclose and compare them with the
   peer definitions, a direct test of self-serving peer selection (Faulkender & Yang 2010).
 

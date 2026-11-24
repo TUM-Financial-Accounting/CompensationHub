@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react'
 
-import { readDataUrl, send, useApi, type FeedbackPost } from '../api'
+import { readDataUrl, send, useApi, useUser, type FeedbackPost } from '../api'
 import { Paperclip, X } from '../icons'
 import { Async, PageHead, Panel } from '../ui'
 
@@ -21,6 +21,7 @@ export function FeedbackView() {
   const [replying, setReplying] = useState<number>()
   const [marked, setMarked] = useState<Record<number, boolean>>({}) // done flags changed in this visit
   const [error, setError] = useState<string>()
+  const admin = useUser()?.admin
   const add = (post: FeedbackPost) => setMine((m) => [post, ...m])
   const mark = (id: number, done: boolean) => {
     setError(undefined)
@@ -33,7 +34,7 @@ export function FeedbackView() {
   return (
     <>
       <PageHead title="Feedback">
-        Bugs, wishes and questions for the developers. Every post is visible to everyone who opens this page.
+        Bugs, wishes and questions for the developers. Every post is visible to everyone who signs in, with your name.
       </PageHead>
       <Panel title="New post">
         <PostForm onPosted={add} />
@@ -44,7 +45,7 @@ export function FeedbackView() {
           const replies = (id: number) => all.filter((r) => r.reply_to === id).sort((a, b) => a.id - b.id)
           const threads = all.filter((p) => p.reply_to === null)
           return (
-            <Panel title="Posts" caption="Newest first; replies under their post, oldest first. Anyone can mark a post as done.">
+            <Panel title="Posts" caption="Newest first; replies under their post, oldest first. Admins mark posts as done.">
               {error && (
                 <p role="alert" className="error-detail">
                   {error}
@@ -77,9 +78,11 @@ export function FeedbackView() {
                         Reply
                       </button>
                     )}
-                    <button type="button" className="link" onClick={() => mark(p.id, !p.done)}>
-                      {p.done ? 'Mark as not done' : 'Mark as done'}
-                    </button>
+                    {admin && (
+                      <button type="button" className="link" onClick={() => mark(p.id, !p.done)}>
+                        {p.done ? 'Mark as not done' : 'Mark as done'}
+                      </button>
+                    )}
                   </div>
                 </section>
               ))}
@@ -116,7 +119,7 @@ function Post({ post }: { post: FeedbackPost }) {
 
 /** A new post, or with `replyTo` a reply to that post. */
 function PostForm({ replyTo, onPosted, onCancel }: { replyTo?: FeedbackPost; onPosted: (p: FeedbackPost) => void; onCancel?: () => void }) {
-  const [author, setAuthor] = useState('')
+  const name = useUser()?.name
   const [body, setBody] = useState('')
   const [photos, setPhotos] = useState<Picked[]>([])
   const [saving, setSaving] = useState(false)
@@ -138,7 +141,6 @@ function PostForm({ replyTo, onPosted, onCancel }: { replyTo?: FeedbackPost; onP
     setError(undefined)
     try {
       const post = await send<FeedbackPost>('POST', '/feedback', {
-        author,
         body,
         reply_to: replyTo?.id ?? null,
         photos: photos.map((p) => ({ type: p.type, data: p.url.split(',')[1] })),
@@ -156,11 +158,9 @@ function PostForm({ replyTo, onPosted, onCancel }: { replyTo?: FeedbackPost; onP
   return (
     <form className="feedback-form" onSubmit={submit} aria-label={replyTo ? `Reply to ${replyTo.author || 'Anonymous'}` : undefined}>
       <label className="field">
-        <span>Name (optional)</span>
-        <input value={author} maxLength={80} autoComplete="name" onChange={(e) => setAuthor(e.target.value)} />
-      </label>
-      <label className="field">
-        <span>{replyTo ? 'Reply' : 'Feedback'}</span>
+        <span>
+          {replyTo ? 'Reply' : 'Feedback'} as {name}
+        </span>
         <textarea value={body} rows={replyTo ? 3 : 5} maxLength={5000} required autoFocus={!!replyTo} onChange={(e) => setBody(e.target.value)} />
       </label>
       {photos.length > 0 && (

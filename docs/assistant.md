@@ -64,10 +64,11 @@ sets the default; without it the first model with a key is used.
 | `morpheus` | `MORPHEUS_API_KEY` (morpheus.cit.tum.de → Profile → Settings → Account; personal key, for School of Computation students and staff) | [CIT docs](https://wiki.ito.cit.tum.de/bin/view/CIT/ITO/Docs/Services/LLM%20%2F%20KI%20(Morpheus)/): Open WebUI, OpenAI-compatible under `https://morpheus.cit.tum.de/api/v1`. Models (Oct 2026): `google/gemma-4-31B-it` and `cyankiwi/Qwen3.8-Flash-Next-AWQ-INT4`, both with tool calling; the current list is at `/api/v1/models`. Still in testing; the CIT states that no request data goes to model providers. Tested 21 Oct 2026: both models call tools natively; Qwen answers in about 10 s, Gemma in about 75 s. |
 | `ollama` | none | not in the default list; for a model on this machine or a chair server: add e.g. `ollama:qwen3:8b` to `LLM_MODELS` and set `OLLAMA_BASE_URL` if the server is elsewhere. Pick a model with tool calling. |
 
-`READ_ONLY=1` (any value except empty, `0`, `false` or `no`) disables the write routes when the dashboard is hosted or
-shown to others; reading stays open. The Docker image sets it; a hosted service that should accept rows sets
-`READ_ONLY=0` (rows saved in a container are lost on the next deploy). `/api/chat` takes 20 questions a minute per
-visitor (`CHAT_PER_MINUTE` in `main.py`) and `/api/extract` files up to 15 MB.
+Saving rows is for admins (`ADMIN_EMAILS`, see the README's sign-in paragraph); everyone signed in
+can chat, attach documents and see a draft, and the draft tells non-admins to pass it to an admin.
+`READ_ONLY=1` (any value except empty, `0`, `false` or `no`) switches the write routes off for
+everyone. `/api/chat` has no rate limit (each question costs LLM credit, and anyone can register)
+and `/api/extract` reads files up to 15 MB.
 
 ## Data entry
 
@@ -94,6 +95,15 @@ the file and its CSV header.
   restored and the build's message is shown. Same rules as hand-edited files, no second validator.
 - People are linked like in any other source: by surname at the same firm, so a 2025 row for
   "Klein" at SAP continues Christian Klein's career.
+- **Kept across deploys.** With `DATABASE_URL` set, each save also writes its rows to the
+  Postgres table `data_change` (table, add or delete, the row, who, when), in the same
+  transaction: a failed build keeps nothing. At every start, before the panel is built, the log
+  is replayed onto the files oldest first: an added row is appended unless the file has it, a
+  deleted row is removed if it is there. A deploy replaces the container's files with yours, the
+  replay puts the hosted rows back; a local backend with the same `DATABASE_URL` writes them into
+  your files, so `git diff data/reference` shows them, ready to commit. Rows are matched by
+  value: a hosted row you edit by hand in the file comes back unedited next to your version, so
+  correct such rows through Add data (delete, then add) or delete their `data_change` entry.
 - After a save every cached result is dropped; the panel is stored at once, the peer groups and
   forecasts are rebuilt in the background (about two minutes) and the assistant's SQL copy on its
   next question. Forecasts start from each firm's latest year, so a firm with a 2025 row moves

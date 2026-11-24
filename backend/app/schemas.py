@@ -922,8 +922,7 @@ class Photo(BaseModel):
     data: Annotated[Base64Bytes, Field(max_length=MAX_PHOTO)]  # base64 in JSON
 
 
-class NewFeedback(BaseModel):
-    author: Annotated[str, StringConstraints(strip_whitespace=True, max_length=80)] = ""
+class NewFeedback(BaseModel):  # posted under the signed-in user's name
     body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
     reply_to: int | None = None   # id of the post this replies to; None for a new post
     photos: Annotated[list[Photo], Field(max_length=4)] = []
@@ -931,16 +930,64 @@ class NewFeedback(BaseModel):
 
 class FeedbackPost(BaseModel):
     id: int
-    author: str              # '' when posted anonymously
+    author: str              # the poster's name; '' on posts from before sign-in
     body: str
     created: datetime
     reply_to: int | None     # id of the post this replies to; None for a top-level post
     photos: list[int]        # ids for GET /api/feedback/photos/{id}
-    done: bool               # marked as done by any visitor; posts only, never replies
+    done: bool               # marked as done by an admin; posts only, never replies
 
 
 class FeedbackDone(BaseModel):
     done: bool
+
+
+# --------------------------------------------------------------------------- sign-in
+
+
+class User(BaseModel):
+    email: str               # '' for the local admin when sign-in is off
+    name: str
+    admin: bool              # email is in ADMIN_EMAILS
+
+
+class Session(BaseModel):
+    user: User | None        # None when signed out
+    login: bool              # sign-in is on (SECRET_KEY set); off, everyone is the local admin
+
+
+Email = Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True, max_length=254,
+                                         pattern=r"^[^@\s]+@[^@\s]+$")]
+Password = Annotated[str, StringConstraints(min_length=8, max_length=200)]
+
+
+class SignIn(BaseModel):
+    email: Email
+    password: Annotated[str, StringConstraints(max_length=200)]
+
+
+class Register(BaseModel):
+    email: Email
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    password: Password
+
+
+class NewPassword(BaseModel):
+    link: str                # the token from a password link (?invite=…)
+    password: Password
+
+
+class Account(BaseModel):
+    email: str
+    name: str
+    active: bool             # has a password; False for an admin who has not used the log's link
+    admin: bool              # email is in ADMIN_EMAILS
+    created: datetime
+
+
+class PasswordLink(BaseModel):
+    link: str                # path with the one-time token: /?invite=…
+    expires: datetime
 
 
 # --------------------------------------------------------------------------- assistant

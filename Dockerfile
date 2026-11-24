@@ -16,8 +16,8 @@ COPY data data
 COPY docs docs
 COPY --from=web /web/dist frontend/dist
 ENV PATH="/srv/backend/.venv/bin:$PATH"
-# Hosted = public: writes are off unless the service sets READ_ONLY=0. Rows saved in a container
-# are lost on the next deploy anyway.
-ENV READ_ONLY=1
+# Hosted: the server does not start without sign-in configured (SECRET_KEY, DATABASE_URL), and
+# trusts Railway's proxy for the client's scheme (the session cookie is then Secure).
+ENV LOGIN_REQUIRED=1 FORWARDED_ALLOW_IPS=*
 WORKDIR /srv/backend
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}

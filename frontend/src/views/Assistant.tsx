@@ -1,7 +1,7 @@
 import * as Plot from '@observablehq/plot'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 
-import { readDataUrl, send, type ChartSpec, type Extracted } from '../api'
+import { readDataUrl, send, useUser, type ChartSpec, type Extracted } from '../api'
 import { base } from '../charts'
 import { MAX_UPLOAD, describe, useChat, type AssistantTurn, type Step } from '../chat'
 import { ArrowUp, Check, ChevronRight, Maximize2, MessageSquare, Paperclip, Square, X } from '../icons'
@@ -114,6 +114,7 @@ export function AssistantPanel({ hidden }: { hidden: boolean }) {
 
 function ChatBody({ inPanel = false }: { inPanel?: boolean }) {
   const chat = useChat()
+  const admin = useUser()?.admin
   const root = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const ready = !!chat.setup
@@ -196,9 +197,13 @@ function ChatBody({ inPanel = false }: { inPanel?: boolean }) {
         {chat.draft && (
           <p className="callout">
             A draft of rows is waiting.{' '}
-            <button type="button" className="link" onClick={chat.openAdd}>
-              Review and save it in Add data
-            </button>
+            {admin ? (
+              <button type="button" className="link" onClick={chat.openAdd}>
+                Review and save it in Add data
+              </button>
+            ) : (
+              'Only admins can save rows: send it to one.'
+            )}
           </p>
         )}
         {chat.notice && (

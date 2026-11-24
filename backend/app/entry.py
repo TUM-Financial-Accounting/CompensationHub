@@ -6,17 +6,26 @@ by sources/manual.py; corrections, aliases, industry codes and KPI categories go
 CSVs in data/reference/. Every save is validated by a full panel build: if the build fails, the
 file is restored and the build's error is returned. After a save every cached result is dropped
 and rebuilt in the background, so the dashboard and the assistant see the new row.
+
+With DATABASE_URL set, every added and deleted row is also kept in Postgres (`data_change`) and
+replayed onto the files at startup: a deploy replaces the container's files, the log keeps what
+was entered on the hosted copy, and a local server with the same DATABASE_URL pulls those rows
+into the files, ready to commit.
 """
 
 from __future__ import annotations
 
 import csv
 import io
+import os
 import threading
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import pandas as pd
+import psycopg
+from psycopg.types.json import Jsonb
 from pypdf import PdfReader
 
 from . import forecast, panel, peers, reference
@@ -173,21 +182,24 @@ def clean(t: Table, row: dict) -> dict[str, str]:
 _saving = threading.Lock()
 
 
+def save_file(t: Table, new_rows: list[dict], before: bytes | None) -> None:
+    header = [c.name for c in t.columns]
+    if before:  # keep columns a hand-edited file may have beyond the form's
+        header += [c for c in next(csv.reader(before.decode("utf-8").splitlines())) if c not in header]
+    t.path.parent.mkdir(parents=True, exist_ok=True)
+    with t.path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, header, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(new_rows)
+
+
 def write(changes: dict[Table, list[dict]]) -> None:
     """Replace the rows of each table, rebuild the panel once, and restore every file if the
     build fails: a draft that spans a firm-year and its executives is kept whole or not at all."""
     with _saving:
         before = {t: t.path.read_bytes() if t.path.exists() else None for t in changes}
         for t, new_rows in changes.items():
-            header = [c.name for c in t.columns]
-            if before[t]:  # keep columns a hand-edited file may have beyond the form's
-                header += [c for c in next(csv.reader(before[t].decode("utf-8").splitlines()))
-                           if c not in header]
-            t.path.parent.mkdir(parents=True, exist_ok=True)
-            with t.path.open("w", newline="", encoding="utf-8") as f:
-                w = csv.DictWriter(f, header, extrasaction="ignore")
-                w.writeheader()
-                w.writerows(new_rows)
+            save_file(t, new_rows, before[t])
         try:
             built = panel.build()
         except Exception:
@@ -201,18 +213,83 @@ def write(changes: dict[Table, list[dict]]) -> None:
     refresh()
 
 
-def add(changes: list[tuple[Table, list[dict]]]) -> int:
+def add(changes: list[tuple[Table, list[dict]]], by: str = "") -> int:
     """Append rows to one or more tables in one build; returns how many were added."""
     new = {t: [clean(t, r) for r in rs] for t, rs in changes}
-    write({t: [*rows(t), *rs] for t, rs in new.items()})
+    with recorded([(t, "add", r) for t, rs in new.items() for r in rs], by):
+        write({t: [*rows(t), *rs] for t, rs in new.items()})
     return sum(map(len, new.values()))
 
 
-def delete(t: Table, index: int) -> None:
+def delete(t: Table, index: int, by: str = "") -> None:
     current = rows(t)
     if not t.deletable or not 0 <= index < len(current):
         raise ValueError("Only rows of the hand-entry tables can be deleted here.")
-    write({t: current[:index] + current[index + 1:]})
+    with recorded([(t, "delete", current[index])], by):
+        write({t: current[:index] + current[index + 1:]})
+
+
+# --------------------------------------------------------------------------- change log
+
+CHANGES = """CREATE TABLE IF NOT EXISTS data_change (
+    id serial PRIMARY KEY,
+    table_id text NOT NULL,
+    op text NOT NULL CHECK (op IN ('add', 'delete')),
+    data jsonb NOT NULL,
+    by_email text NOT NULL DEFAULT '',
+    at timestamptz NOT NULL DEFAULT now())"""
+
+
+@contextmanager
+def recorded(entries: list[tuple[Table, str, dict]], by: str):
+    """Log the changes in the same transaction as the save: a failed build rolls the log back,
+    a database that is down stops the save before any file is touched."""
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        yield
+        return
+    # ponytail: a commit that fails after the files were written leaves them unlogged
+    with psycopg.connect(url, connect_timeout=5) as db:
+        db.execute(CHANGES)
+        db.cursor().executemany(
+            "INSERT INTO data_change (table_id, op, data, by_email) VALUES (%s, %s, %s, %s)",
+            [(t.id, op, Jsonb(r), by) for t, op, r in entries])
+        yield
+
+
+def merged(log: list[tuple[str, str, dict]]) -> dict[Table, list[dict]]:
+    """The tables the log changes, with it applied oldest first: an added row is appended unless
+    the file has it already, a deleted row is removed if it is there. So the replay is a no-op on
+    files that already hold the changes, and rows edited in the files by hand are kept."""
+    out: dict[Table, list[dict]] = {}
+    for table_id, op, row in log:
+        t = table(table_id)
+        if t is None:  # a custom table whose file is gone
+            continue
+        current = out.setdefault(t, rows(t))
+        i = next((i for i, r in enumerate(current) if all(r.get(k, "") == v for k, v in row.items())), None)
+        if op == "add" and i is None:
+            current.append(row)
+        elif op == "delete" and i is not None:
+            del current[i]
+    return {t: rs for t, rs in out.items() if rs != rows(t)}
+
+
+def replay() -> None:
+    """At startup, before the panel is built: bring the files up to date with the log."""
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        return
+    try:
+        with psycopg.connect(url, connect_timeout=5) as db:
+            db.execute(CHANGES)
+            log = db.execute("SELECT table_id, op, data FROM data_change ORDER BY id").fetchall()
+    except psycopg.OperationalError as e:  # serve the files as they are; saving fails loudly
+        print(f"Rows entered on the hosted copy not replayed, database unreachable: {e}")
+        return
+    for t, rs in merged(log).items():
+        save_file(t, rs, t.path.read_bytes() if t.path.exists() else None)
+        print(f"Replayed hand-entered rows into {t.path.name}")
 
 
 def validate(changes: list[tuple[Table, list[dict]]]) -> list[dict]:

@@ -437,9 +437,23 @@ export interface Extracted { name: string; text: string; pages: number | null; t
 
 // ------------------------------------------------------------------ feedback
 
-/** `author` is '' for anonymous posts; `created` is an ISO timestamp; `reply_to` is the post a reply
- * answers (null for a post); `photos` are ids for `/api/feedback/photos/{id}`; `done` is set by any visitor. */
+/** `author` is the poster's name ('' on posts from before sign-in); `created` is an ISO timestamp; `reply_to`
+ * is the post a reply answers (null for a post); `photos` are ids for `/api/feedback/photos/{id}`; `done` is set by an admin. */
 export interface FeedbackPost { id: number; author: string; body: string; created: string; reply_to: number | null; photos: number[]; done: boolean }
+
+// ------------------------------------------------------------------ sign-in
+
+/** `email` is '' for the local admin when sign-in is off; `admin`: in ADMIN_EMAILS. */
+export interface User { email: string; name: string; admin: boolean }
+/** `user` is null when signed out; `login` is false when sign-in is off (everyone is the local admin). */
+export interface Session { user: User | null; login: boolean }
+/** `active`: has a password; false for an admin who has not used the server log's link yet. */
+export interface Account { email: string; name: string; active: boolean; admin: boolean; created: string }
+/** `link`: path with the one-time token, /?invite=… */
+export interface PasswordLink { link: string; expires: string }
+
+/** The signed-in user (cached with the other responses; App loads it before any view). */
+export const useUser = () => useApi<Session>('/auth/me').data?.user ?? null
 
 // ------------------------------------------------------------------ assistant
 
@@ -467,6 +481,12 @@ let version = 0
 const watchers = new Set<() => void>()
 const watch = (fn: () => void) => (watchers.add(fn), () => void watchers.delete(fn))
 
+/** A request was refused because the session ended: reload, and App shows the sign-in page. */
+const signedOut = (r: Response) => {
+  if (r.status === 401) location.reload()
+  return r
+}
+
 /** Forget every cached response, e.g. after data was added; every mounted view then loads again. */
 export const clearCache = () => {
   cache.clear()
@@ -480,7 +500,7 @@ export async function send<T>(method: 'POST' | 'DELETE', path: string, body?: un
     method,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  }).then(signedOut)
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `${r.status} ${r.statusText}`)
   return data as T
@@ -504,7 +524,7 @@ export async function streamChat(request: ChatRequest, onEvent: (e: ChatEvent) =
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
     signal,
-  })
+  }).then(signedOut)
   if (!r.ok || !r.body) throw new Error(`${r.status} ${r.statusText}`)
   const reader = r.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
@@ -531,6 +551,7 @@ export function useApi<T>(path: string | null): Loadable<T> {
     if (path === null || cache.has(path)) return
     let live = true
     fetch(`/api${path}`)
+      .then(signedOut)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`))))
       .then(
         (data: T) => {

@@ -24,16 +24,31 @@ after every row saved with **+ Add data**.
 The assistant needs an LLM: copy `backend/.env.example` to `backend/.env` and add an OpenAI or
 Morpheus key, or run a local Ollama model ([`docs/assistant.md`](docs/assistant.md#configuration)).
 
+**Sign-in** is off until `SECRET_KEY` is set: locally every visitor is an admin. With it on (it
+also needs `DATABASE_URL`), every page and API route needs a signed-in user, and only the
+addresses in `ADMIN_EMAILS` can add data, mark feedback as done and manage accounts; others post at
+most 5 feedback posts a day. Anyone can register with email and password, with no outside
+service and no email check. Admins see every account on the **Accounts** page and remove accounts
+(signed out within a minute); for a forgotten password they make a one-time password link and send
+it themselves (copy it, or *Write email* opens their own mail program). Each admin gets an account
+at startup, so nobody else can register that address, and an admin without a password finds a
+link in the server log (`Choose the password of admin …`). Add an address to `ADMIN_EMAILS` only
+once you know its account is that person's. Passwords are scrypt hashes in Postgres; the session is
+a signed, http-only cookie for 7 days (`backend/app/auth.py`).
+
 **On a phone on the same Wi-Fi:** start the dashboard with `npm run dev -- --host` and open the
 Network URL it prints in Safari or Chrome. The Vite dev server forwards `/api` to the backend, so
-the backend can stay on `127.0.0.1`. The panel is confidential, so use a network you trust; when
-others can reach the dashboard, start the backend with `READ_ONLY=1` (or set it in `backend/.env`)
-to switch off the write routes of **+ Add data**.
+the backend can stay on `127.0.0.1`. The panel is confidential, so use a network you trust, and
+turn sign-in on or start the backend with `READ_ONLY=1` to switch off the write routes of
+**+ Add data**.
 
 **Hosted (Railway):** one service built from the `Dockerfile` (settings in `railway.json`) plus a
-Postgres with `DATABASE_URL=${{Postgres.DATABASE_URL}}`. Deploy from the repo root with
-`railway up --no-gitignore` (uploads the git-ignored `data/raw/`). A deploy goes live only once
-`/api/summary` answers, so a broken build leaves the previous one running.
+Postgres with `DATABASE_URL=${{Postgres.DATABASE_URL}}`, and `SECRET_KEY` and `ADMIN_EMAILS` (the
+image refuses to start without sign-in). Deploy from the repo root with `railway up --no-gitignore`
+(uploads the git-ignored `data/raw/`). A deploy goes live only once `/api/health` answers, so a
+broken build leaves the previous one running. Rows saved with **+ Add data** on the hosted copy
+are kept in Postgres and replayed at every start; a local backend with the same `DATABASE_URL`
+writes them into your files, ready to commit ([`docs/assistant.md`](docs/assistant.md#data-entry)).
 
 Commands:
 
@@ -57,9 +72,10 @@ backend/app/forecast.py  pay prediction: fourteen models, seven pay items, backt
 backend/app/redflags.py  red flags: four rules, five detectors, planted-anomaly test
 backend/app/entry.py     Add data form: tables, save with rebuild check, plausibility check
 backend/app/assistant.py LLM assistant: providers, tools, loop, number check
+backend/app/auth.py      register and sign in: accounts, passwords, session cookie, admins
 backend/app/main.py      JSON API, one route per dashboard view
 backend/app/schemas.py   response models (mirrored in frontend/src/api.ts)
-backend/tests/           pytest: panel, peers, forecast, red flags, entry, assistant
+backend/tests/           pytest: panel, peers, forecast, red flags, entry, assistant, sign-in, feedback
 frontend/src/views/      one file per dashboard view, the Add data dialog and the assistant
 frontend/src/api.ts      response types and data hooks, mirror of schemas.py
 frontend/src/charts.ts   shared chart settings (axes, colours, regime-break marker)
@@ -75,8 +91,12 @@ docs/hackathon/          historical, git-ignored: review of the six hackathon pr
 
 ## API
 
+Every route needs a signed-in user when sign-in is on, except `/api/auth/*` and `/api/health`.
+
 | Route | Serves |
 |---|---|
+| `POST /api/auth/register`, `/api/auth/signin`, `/api/auth/password`, `/api/auth/logout`, `GET /api/auth/me` | register; sign in; choose a new password with a link; sign out; who is signed in and whether they are an admin |
+| `GET /api/auth/accounts`, `POST /api/auth/accounts/{email}/link`, `DELETE /api/auth/accounts/{email}` | every account; a one-time password link (7 days); remove an account (admins) |
 | `GET /api/summary` | headline numbers, DAX CEO pay quantiles per year |
 | `GET /api/trends?scope=dax\|all` | (shown on the Overview) pay level by role, pay mix, CEO premium, opt-out rate |
 | `GET /api/firms`, `/api/firms/{id}` | company list; one company's years, executives, plan design |
@@ -97,11 +117,11 @@ docs/hackathon/          historical, git-ignored: review of the six hackathon pr
 | `GET /api/whatif?person_id=&years=&role=&index=&board=&employees=&growth=` | what-if for an executive |
 | `GET /api/flags` | red-flag rules and detectors: flags per year, agreement, planted-anomaly test |
 | `GET /api/flags/executives?year=&firm=&person=` | flagged executive-years with the evidence of each flag, and firm-year flags |
-| `GET /api/tables`, `DELETE /api/tables/{id}/rows/{i}` | tables of the Add data form; delete a hand-entered row |
-| `POST /api/rows`, `POST /api/rows/check` | save rows to one or more tables in one build (all or nothing); check them first (writes are off with `READ_ONLY=1`) |
+| `GET /api/tables`, `DELETE /api/tables/{id}/rows/{i}` | tables of the Add data form; delete a hand-entered row (admins) |
+| `POST /api/rows`, `POST /api/rows/check` | save rows to one or more tables in one build (all or nothing; admins; off with `READ_ONLY=1`); check them first |
 | `POST /api/extract` | text of an uploaded PDF or text file, for the assistant |
-| `GET /api/feedback`, `POST /api/feedback` | feedback posts and their replies, newest first; post one or a reply, with up to 4 photos (PNG, JPEG, GIF, WebP, 8 MB each) (open to all, also with `READ_ONLY=1`; needs `DATABASE_URL`) |
-| `POST /api/feedback/{id}/done` | mark a post as done or open again (open to all) |
+| `GET /api/feedback`, `POST /api/feedback` | feedback posts and their replies, newest first; post one or a reply under your name, with up to 4 photos (PNG, JPEG, GIF, WebP, 8 MB each) (5 a day, admins unlimited; also with `READ_ONLY=1`; needs `DATABASE_URL`) |
+| `POST /api/feedback/{id}/done` | mark a post as done or open again (admins) |
 | `GET /api/feedback/photos/{id}` | one attached photo, as the image file |
 | `GET /api/chat/models`, `POST /api/chat` | assistant: models and demo questions; streamed answer |
 
@@ -110,7 +130,9 @@ Interactive docs at `http://localhost:8000/docs`.
 ## Stack
 
 - **FastAPI + pandas**, no database for the panel: it is ~7.5k rows and fits in memory. Only the
-  Feedback page's posts live in Postgres (`DATABASE_URL`; the table is created on first use).
+  Feedback page's posts and the log of rows saved with Add data live in Postgres (`DATABASE_URL`;
+  the tables are created on first use), and the accounts. Sign-in uses only the standard library
+  (`hashlib.scrypt`, `hmac`).
   scikit-learn for the peer definitions and the prediction models; the `openai` SDK for the
   assistant (OpenAI, TUM's Morpheus and Ollama all speak its API); SQLite (standard library) as
   the assistant's read-only query copy; `pypdf` to read attached reports.

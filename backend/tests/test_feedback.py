@@ -28,8 +28,8 @@ def test_rejects_blank_post_and_non_images():
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="needs a throwaway Postgres")
 def test_post_round_trips(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
-    post = client.post("/api/feedback", json={"author": " Ada ", "body": "Line one\nline two"}).json()
-    assert post["author"] == "Ada" and post["body"] == "Line one\nline two"
+    post = client.post("/api/feedback", json={"body": "Line one\nline two"}).json()
+    assert post["author"] == "Local" and post["body"] == "Line one\nline two"  # sign-in is off
     assert post["reply_to"] is None and post["photos"] == [] and post["done"] is False
     assert client.get("/api/feedback").json()[0] == post
 
@@ -41,7 +41,7 @@ def test_post_round_trips(monkeypatch):
     assert photo.content == png and photo.headers["content-type"] == "image/png"
     assert photo.headers["x-content-type-options"] == "nosniff"
     assert client.get("/api/feedback").json()[0] == reply
-    # anyone marks a post as done and open again; replies and unknown posts cannot be marked
+    # an admin (here the local one) marks a post as done and open again; not replies or unknown posts
     mark = lambda i, done: client.post(f"/api/feedback/{i}/done", json={"done": done})  # noqa: E731
     assert mark(post["id"], True).json() == {**post, "done": True}
     assert mark(post["id"], False).json() == post
@@ -49,3 +49,16 @@ def test_post_round_trips(monkeypatch):
     # one level of replies only, and only to posts that exist
     assert client.post("/api/feedback", json={"body": "x", "reply_to": reply["id"]}).status_code == 422
     assert client.post("/api/feedback", json={"body": "x", "reply_to": 10**9}).status_code == 422
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="needs a throwaway Postgres")
+def test_five_posts_a_day_except_for_admins(monkeypatch):
+    from app import auth, main
+    monkeypatch.setenv("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
+    monkeypatch.setattr(auth, "user", lambda r: {"email": "limit@test", "name": "L", "admin": False})
+    with main.feedback_db() as db:
+        db.execute("DELETE FROM feedback WHERE email = 'limit@test'")
+    codes = [client.post("/api/feedback", json={"body": f"post {i}"}).status_code for i in range(6)]
+    assert codes == [200] * 5 + [429]
+    monkeypatch.setattr(auth, "user", lambda r: {"email": "limit@test", "name": "L", "admin": True})
+    assert client.post("/api/feedback", json={"body": "admin"}).status_code == 200
